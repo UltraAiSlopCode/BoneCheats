@@ -1,0 +1,6 @@
+<Project>
+  <!-- Copy this file to BoneCheats.props.user (same folder) and edit the path. -->
+  <PropertyGroup>
+    <BonelabDir>D:\SteamLibrary\steamapps\common\BONELAB</BonelabDir>
+  </PropertyGroup>
+</Project>
