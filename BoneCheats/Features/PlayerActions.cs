@@ -6,6 +6,8 @@ using Il2CppSLZ.Marrow.Data;          // AttackType
 using LabFusion.Senders;              // PlayerSender
 using MelonLoader;
 using UnityEngine;
+using Barcode = Il2CppSLZ.Marrow.Warehouse.Barcode;
+using RigManager = Il2CppSLZ.Marrow.RigManager;
 
 namespace BoneCheats.Features
 {
@@ -63,22 +65,39 @@ namespace BoneCheats.Features
         // ---------------- Kill (loop) ----------------
 
         private static readonly Dictionary<byte, float> KillLoops = new Dictionary<byte, float>();
+        private static readonly HashSet<byte> KillLoopExcluded = new HashSet<byte>();   // see SetKillLoop below
         private static bool _killLoopAllEnabled;
 
         public static bool IsKillLooping(byte id) { return KillLoops.ContainsKey(id); }
 
+        /// <summary>
+        /// Turns one player's kill loop on/off. BUGFIX: while "Kill Loop All" is on, this used to get silently
+        /// undone a frame later - TickKillLoop's "add anyone missing" pass for the All toggle would see the
+        /// player you just turned off, find them missing from KillLoops, and add them right back, so turning an
+        /// individual player off looked like it did nothing (or "stopped for a moment, then kept killing"). Now
+        /// turning a player off while All is on remembers that as an exclusion, so the All pass leaves them alone
+        /// until All itself is switched off and on again (see SetKillLoopAll).
+        /// </summary>
         public static void SetKillLoop(byte id, bool on)
         {
-            if (on) KillLoops[id] = 0f; else KillLoops.Remove(id);
+            if (on) { KillLoopExcluded.Remove(id); KillLoops[id] = 0f; }
+            else { KillLoopExcluded.Add(id); KillLoops.Remove(id); }
         }
 
-        public static void ClearKillLoops() { KillLoops.Clear(); _killLoopAllEnabled = false; }
+        public static void ClearKillLoops() { KillLoops.Clear(); KillLoopExcluded.Clear(); _killLoopAllEnabled = false; }
 
         /// <summary>Lobby > Kill Loop All toggle: while on, every other player in the lobby (including anyone
-        /// who joins afterward) gets added to the kill loop. Switch it off and whoever is still looping keeps
-        /// looping until their own per-player toggle is switched off too (same as Annoy All).</summary>
+        /// who joins afterward) gets added to the kill loop, except anyone individually turned off since (see
+        /// SetKillLoop). Switching it off stops everyone immediately - it clears every loop this toggle is
+        /// responsible for, not just new ones - and switching it back on clears the exclusion list, so All once
+        /// again covers the whole lobby.</summary>
         public static bool IsKillLoopAllOn() { return _killLoopAllEnabled; }
-        public static void SetKillLoopAll(bool on) { _killLoopAllEnabled = on; }
+        public static void SetKillLoopAll(bool on)
+        {
+            _killLoopAllEnabled = on;
+            KillLoopExcluded.Clear();
+            if (!on) KillLoops.Clear();
+        }
 
         private static readonly List<byte> LoopDone = new List<byte>();
         private static readonly List<byte> LoopIds = new List<byte>();
@@ -94,6 +113,7 @@ namespace BoneCheats.Features
                 {
                     byte id;
                     try { id = IdOf(p); } catch { continue; }
+                    if (KillLoopExcluded.Contains(id)) continue;          // you turned this one off - leave them be
                     if (!KillLoops.ContainsKey(id)) KillLoops[id] = 0f;   // fires on the very next tick
                 }
             }
@@ -111,6 +131,41 @@ namespace BoneCheats.Features
                 SendHit(p, KillDamage);
             }
             foreach (byte id in LoopDone) KillLoops.Remove(id);
+        }
+
+        // ---------------- Clone Avatar ----------------
+
+        /// <summary>
+        /// Puts the same avatar on you that this player is wearing. The avatar's barcode comes from Fusion
+        /// (NetworkPlayer.AvatarSetter.AvatarBarcode; falls back to their rig's avatarID), and the swap is the
+        /// game's own RigManager.SwapAvatarCrate, so Fusion syncs it to everyone like a normal avatar change.
+        /// If the avatar isn't installed on your PC the game can't load it and you keep your current one.
+        /// </summary>
+        public static void CloneAvatar(byte id)
+        {
+            Plr p = Find(id);
+            if (p == null) return;                                  // they left: nothing to do, silently
+
+            string barcode = null;
+            try
+            {
+                LabFusion.Entities.RigAvatarSetter setter = p.Fusion.AvatarSetter;
+                if (setter != null) barcode = setter.AvatarBarcode;
+            }
+            catch { }
+            if (string.IsNullOrEmpty(barcode))
+            {
+                RigManager theirs = p.Rig.TryCast<RigManager>();
+                if (theirs != null) barcode = theirs.avatarID;
+            }
+            if (string.IsNullOrEmpty(barcode)) { MelonLogger.Msg("[Players] couldn't read " + p.Name + "'s avatar."); return; }
+
+            RigManager me = Game.Rig;
+            if (me == null) return;
+            if (me.avatarID == barcode) return;
+
+            me.SwapAvatarCrate(new Barcode(barcode), false, null);
+            MelonLogger.Msg("[Players] cloning " + p.Name + "'s avatar: " + barcode);
         }
 
         // ---------------- Teleport To ----------------
@@ -144,21 +199,32 @@ namespace BoneCheats.Features
 
         // ---------------- Annoy (poke spam) ----------------
 
+        private static readonly HashSet<byte> AnnoyExcluded = new HashSet<byte>();   // see SetAnnoy below
+
         public static bool IsAnnoying(byte id) { return Annoying.ContainsKey(id); }
 
+        /// <summary>Same exclusion fix as SetKillLoop: while "Annoy All" is on, turning one player off is
+        /// remembered so the All pass below doesn't add them straight back on the next tick.</summary>
         public static void SetAnnoy(byte id, bool on)
         {
-            if (!on) { Annoying.Remove(id); return; }
-            Annoying[id] = new AnnoyState { Next = 0f, Until = Time.unscaledTime + AnnoyMaxSeconds };
+            if (on) { AnnoyExcluded.Remove(id); Annoying[id] = new AnnoyState { Next = 0f, Until = Time.unscaledTime + AnnoyMaxSeconds }; }
+            else { AnnoyExcluded.Add(id); Annoying.Remove(id); }
         }
 
-        public static void ClearAnnoy() { Annoying.Clear(); _annoyAllEnabled = false; }
+        public static void ClearAnnoy() { Annoying.Clear(); AnnoyExcluded.Clear(); _annoyAllEnabled = false; }
 
         /// <summary>Lobby > Annoy All toggle: while on, every other player in the lobby (including anyone who
-        /// joins afterward) gets continuously poke-spammed, refreshed every tick so the normal 15 s auto-stop
-        /// never kicks in. Switch it off and each player's own timer just runs out within 15 s, same as always.</summary>
+        /// joins afterward) gets continuously poke-spammed, except anyone individually turned off since (see
+        /// SetAnnoy); their state is refreshed every tick so the normal 15 s auto-stop never kicks in for them.
+        /// Switching All off stops everyone immediately instead of waiting out that 15 s, and switching it back
+        /// on clears the exclusion list, so All once again covers the whole lobby.</summary>
         public static bool IsAnnoyAllOn() { return _annoyAllEnabled; }
-        public static void SetAnnoyAll(bool on) { _annoyAllEnabled = on; }
+        public static void SetAnnoyAll(bool on)
+        {
+            _annoyAllEnabled = on;
+            AnnoyExcluded.Clear();
+            if (!on) Annoying.Clear();
+        }
 
         private static readonly List<byte> Done = new List<byte>();
 
@@ -173,6 +239,7 @@ namespace BoneCheats.Features
                 {
                     byte id;
                     try { id = IdOf(p); } catch { continue; }
+                    if (AnnoyExcluded.Contains(id)) continue;             // you turned this one off - leave them be
                     AnnoyState st;
                     if (!Annoying.TryGetValue(id, out st)) { st = new AnnoyState { Next = 0f }; Annoying[id] = st; }
                     st.Until = now + AnnoyMaxSeconds;   // keep extending while the master toggle is on

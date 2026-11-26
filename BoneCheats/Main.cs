@@ -3,7 +3,7 @@ using BoneCheats.Features;
 using BoneCheats.UI;
 using MelonLoader;
 
-[assembly: MelonInfo(typeof(BoneCheats.Main), "BoneCheats", "3.6.0", "you")]
+[assembly: MelonInfo(typeof(BoneCheats.Main), "BoneCheats", "1.1.0", "HoodRape")]
 [assembly: MelonGame("Stress Level Zero", "BONELAB")]
 
 namespace BoneCheats

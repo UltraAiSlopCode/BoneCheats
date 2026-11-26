@@ -9,12 +9,13 @@ using Gun = Il2CppSLZ.Marrow.Gun;
 namespace BoneCheats.Features
 {
     /// <summary>
-    /// Harmony hook on Gun.Fire(): silent aim, bullet TP, infinite ammo and bullet tracers.
+    /// Harmony hook on Gun.Fire(): silent aim, bullet TP, infinite ammo, no recoil and bullet tracers.
     ///
     /// Silent aim: for the duration of the Fire() call the gun's fire point is rotated at the target,
     ///             then put back, so the gun in your hand never visibly moves.
     /// Bullet TP:  same, but the fire point is also moved to just in front of the target.
     /// Infinite ammo: the magazine is topped up right before Fire() and again right after, so it can't run dry.
+    /// No recoil:  see NoRecoil - the gun's kick values are zeroed for the duration of the Fire() call only.
     /// Tracers:    Fire() can be called while the trigger is merely held (or the gun is empty), so a tracer is
     ///             only drawn when the gun's state shows that a round really left it (cartridge state changed,
     ///             chamber changed or the magazine count dropped).
@@ -31,6 +32,7 @@ namespace BoneCheats.Features
             public bool HasTarget;
             public Vector3 Target;
             public CombatFeature.ShotSnapshot Before;
+            public NoRecoil.State Recoil;
         }
 
         private static bool _installed;
@@ -64,10 +66,11 @@ namespace BoneCheats.Features
                 Gun gun = __instance;
                 if (gun == null || !CombatFeature.IsPlayerGun(gun)) return;
 
-                CombatFeature.BeforeShot(gun);
                 if (Settings.InfiniteAmmo.Value) CombatFeature.RefillGun(gun);
 
                 var st = new FireState { Gun = gun, Before = CombatFeature.Snapshot(gun) };
+                __state = st;       // set before anything below can throw, so Postfix always runs and restores what Begin changed
+                if (Settings.NoRecoil.Value) st.Recoil = NoRecoil.Begin(gun);
                 Transform fp = CombatFeature.FirePoint(gun);
                 st.Fp = fp;
 
@@ -100,6 +103,9 @@ namespace BoneCheats.Features
         {
             FireState st = __state;
             if (st == null) return;
+
+            try { NoRecoil.End(st.Recoil); }
+            catch (Exception e) { R.WarnOnce("postfix-recoil", "[GunHooks] no-recoil restore error: " + e.Message); }
 
             try
             {

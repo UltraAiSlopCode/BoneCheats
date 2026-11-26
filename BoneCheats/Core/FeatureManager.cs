@@ -12,10 +12,12 @@ namespace BoneCheats.Core
             new MovementFeature(),   // fly, noclip, walk speed
             new CombatFeature(),     // aim assist targeting, gun tweaks (recoil, spread, rpm, ammo, damage)
             new EspFeature(),        // health / names of other players
+            new SkeletonFeature(),   // stick-figure skeleton on other players
             new CharmFeature(),      // full-body charms (self, players, weapons)
             new TracerFeature(),     // bullet tracers
             new AntiRagdollFeature(),// stops other players / the game from knocking you out
             new PlayerActionsFeature(), // Players page: kill / teleport to / annoy, keeps the list in sync
+            new QuickToggleHotkeys(),// Grip+Grip controller chord for Settings > Quick Toggles
         };
 
         public static void OnSceneInitialized()

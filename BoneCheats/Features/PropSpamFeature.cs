@@ -37,8 +37,8 @@ namespace BoneCheats.Features
         private const int SpawnsPerSecond = 2300;  // spawn rate PER PLAYER - as fast as the request queue allows
         private const int MaxPerFrame = 100;        // spawn requests issued in a single frame (avoids frame spikes)
         private const float PropLifetime = 12f;    // shorter than before on purpose - at this rate, old props need
-                                                    // to clear out fast or MaxAlive is hit almost instantly and new
-                                                    // spawns stop until some expire
+                                                   // to clear out fast or MaxAlive is hit almost instantly and new
+                                                   // spawns stop until some expire
         private const float LaunchSpeed = 5f;
         private const float SpinSpeed = 24f;       // rad/s, re-applied every frame so they keep spinning
         private const float SpawnHeight = 2.5f;    // above the target's head
@@ -56,11 +56,18 @@ namespace BoneCheats.Features
 
         public static bool IsOn() { return _enabled; }
 
-        /// <summary>Turns prop spam on/off for the whole lobby at once.</summary>
+        /// <summary>Turns prop spam on/off for the whole lobby at once. Switching off despawns everything
+        /// already spawned right away, instead of leaving it to spin for up to PropLifetime more seconds.</summary>
         public static void SetAll(bool on)
         {
             _enabled = on;
-            if (!on) Accum.Clear();
+            if (!on)
+            {
+                Accum.Clear();
+                for (int i = 0; i < Alive.Count; i++) Remove(Alive[i]);
+                Alive.Clear();
+                _pending = 0;
+            }
         }
 
         public static void ClearAll()

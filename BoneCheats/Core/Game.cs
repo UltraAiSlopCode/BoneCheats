@@ -74,14 +74,21 @@ namespace BoneCheats.Core
             return hand != null ? hand.transform : null;
         }
 
+        /// <summary>The raw controller object for a hand (null if there is no rig) - shared by Stick() below and by
+        /// ControllerInput, which reflects over it to read button state without a typed reference to each button.</summary>
+        public static BaseController ControllerOf(bool right)
+        {
+            RigManager rig = Rig;
+            if (rig == null) return null;
+            ControllerRig cr = rig.controllerRig;
+            if (cr == null) return null;
+            return right ? cr.rightController : cr.leftController;
+        }
+
         /// <summary>Thumbstick of a controller, (0,0) when there is no rig.</summary>
         public static Vector2 Stick(bool right)
         {
-            RigManager rig = Rig;
-            if (rig == null) return Vector2.zero;
-            ControllerRig cr = rig.controllerRig;
-            if (cr == null) return Vector2.zero;
-            BaseController c = right ? cr.rightController : cr.leftController;
+            BaseController c = ControllerOf(right);
             return c != null ? c.GetThumbStickAxis() : Vector2.zero;
         }
 

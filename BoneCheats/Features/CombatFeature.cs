@@ -17,7 +17,7 @@ namespace BoneCheats.Features
 {
     /// <summary>
     /// Everything about guns you hold: target picking for silent aim / bullet TP (other players' heads, no
-    /// distance limit), and live tweaks to the held gun (no recoil, no spread, rapid fire, infinite ammo, damage). The
+    /// distance limit), and live tweaks to the held gun (no spread, rapid fire, infinite ammo, damage; no recoil is in NoRecoil.cs). The
     /// aim cone (FOV) is measured from either your head or from the gun you're holding (or your hand if you're
     /// not holding one) - see Settings.AimOrigin.
     ///
@@ -100,7 +100,6 @@ namespace BoneCheats.Features
             foreach (GunState g in _guns.Values) RestoreGun(g);
             _guns.Clear();
             RestoreAllProjectiles();
-            RestoreKick();
             ClearTarget();
             AimOriginValid = false;
         }
@@ -108,8 +107,6 @@ namespace BoneCheats.Features
         public static void OnSceneInit()
         {
             _carts.Clear();
-            _kick.Clear();
-            _recRbs.Clear();
             _ammoWasOn = false;
             ClearTarget();
             AimOriginValid = false;
@@ -122,116 +119,14 @@ namespace BoneCheats.Features
             TargetId = IntPtr.Zero;
         }
 
+        // NoRecoil is listed so the held-gun lookup (Held[], used by GunHooks.IsPlayerGun) stays per-frame while it is on.
         private static bool NeedsGunWork()
         {
             return Settings.AimMode.Value != 0 || Settings.NoRecoil.Value || Settings.NoSpread.Value || Settings.RapidFire.Value
                 || Settings.InfiniteAmmo.Value || Math.Abs(Settings.DamageMult.Value - 1f) > 0.01f;
         }
 
-        // ---- no recoil ----
-        // Layer 1 (main): the kick is data on the gun. Every float on the Gun, its cartridge and its projectile whose
-        //   name contains "kick" or "recoil" is set to 0 while No Recoil is on and put back when it is turned off.
-        //   The names it finds are written to the MelonLoader log once ("[No Recoil] found on ...").
-        // Layer 2 (fallback): the game also shoves the gun's rigidbodies when it fires, so right before each of YOUR shots
-        //   their velocities are remembered and put back on the next few frames AND the next few physics ticks.
-        private sealed class KickSaved { public object Obj; public PropertyInfo Prop; public float Orig; }
-        private static readonly Dictionary<string, KickSaved> _kick = new Dictionary<string, KickSaved>();
-        private static readonly Dictionary<Type, PropertyInfo[]> _kickProps = new Dictionary<Type, PropertyInfo[]>();
-
-        private static PropertyInfo[] KickProps(Type t)
-        {
-            if (_kickProps.TryGetValue(t, out PropertyInfo[] cached)) return cached;
-            var list = new List<PropertyInfo>();
-            foreach (PropertyInfo pi in t.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-            {
-                if (pi.PropertyType != typeof(float) || !pi.CanRead || !pi.CanWrite) continue;
-                string n = pi.Name.ToLowerInvariant();
-                if (n.Contains("kick") || n.Contains("recoil")) list.Add(pi);
-            }
-            PropertyInfo[] arr = list.ToArray();
-            _kickProps[t] = arr;
-            string names = arr.Length == 0 ? "(nothing)" : string.Join(", ", Array.ConvertAll(arr, x => x.Name));
-            MelonLogger.Msg("[No Recoil] found on " + t.Name + ": " + names);
-            return arr;
-        }
-
-        private static void ZeroKick(object obj, IntPtr ptr)
-        {
-            if (obj == null || ptr == IntPtr.Zero) return;
-            foreach (PropertyInfo pi in KickProps(obj.GetType()))
-            {
-                string key = ptr + ":" + pi.Name;
-                float cur = (float)pi.GetValue(obj);
-                if (!_kick.ContainsKey(key)) _kick[key] = new KickSaved { Obj = obj, Prop = pi, Orig = cur };
-                if (cur != 0f) pi.SetValue(obj, 0f);
-            }
-        }
-
-        private static void RestoreKick()
-        {
-            foreach (KickSaved k in _kick.Values)
-            {
-                try { k.Prop.SetValue(k.Obj, k.Orig); } catch { }
-            }
-            _kick.Clear();
-        }
-
-        private static void ApplyNoKick(Gun gun)
-        {
-            if (!Settings.NoRecoil.Value) { if (_kick.Count > 0) RestoreKick(); return; }
-            ZeroKick(gun, gun.Pointer);
-            CartridgeData cart = CartridgeOf(gun);
-            if (cart == null) return;
-            ZeroKick(cart, cart.Pointer);
-            ProjectileData pd = cart.projectile;
-            if (pd != null) ZeroKick(pd, pd.Pointer);
-        }
-
-        private sealed class RbSaved { public Rigidbody Rb; public Vector3 Vel, Ang; }
-        private static readonly List<RbSaved> _recRbs = new List<RbSaved>();
-        private static int _recFrames, _recFixed;
-
-        private static void AddRb(Rigidbody rb)
-        {
-            if (rb == null) return;
-            foreach (RbSaved r in _recRbs) if (r.Rb.Pointer == rb.Pointer) return;
-            _recRbs.Add(new RbSaved { Rb = rb, Vel = rb.velocity, Ang = rb.angularVelocity });
-        }
-
-        private static void RestoreRbs()
-        {
-            foreach (RbSaved r in _recRbs)
-            {
-                if (r.Rb == null) continue;
-                r.Rb.velocity = r.Vel;
-                r.Rb.angularVelocity = r.Ang;
-            }
-        }
-
-        public static void BeforeShot(Gun gun)
-        {
-            if (!Settings.NoRecoil.Value) return;
-            _recRbs.Clear();
-            InteractableHost host = gun.host;
-            if (host != null) AddRb(host.Rb);
-            foreach (Rigidbody rb in gun.GetComponentsInChildren<Rigidbody>()) AddRb(rb);
-            _recFrames = 3;
-            _recFixed = 3;
-        }
-
-        protected override void LateTick()
-        {
-            if (_recFrames <= 0) return;
-            _recFrames--;
-            if (Settings.NoRecoil.Value) RestoreRbs();
-        }
-
-        protected override void FixedTick()
-        {
-            if (_recFixed <= 0) return;
-            _recFixed--;
-            if (Settings.NoRecoil.Value) RestoreRbs();
-        }
+        // No recoil lives in NoRecoil.cs and runs inside the Gun.Fire() hook (GunHooks).
 
         private int _idleTicks;
 
@@ -239,7 +134,7 @@ namespace BoneCheats.Features
         {
             // Nothing enabled and nothing left to restore: skip all per-frame hand/gun lookups.
             // (Held[] is still refreshed ~4x/s so GunHooks.IsPlayerGun stays correct for tracers.)
-            if (!NeedsGunWork() && _guns.Count == 0 && _projs.Count == 0 && _kick.Count == 0 && !Settings.BulletTracers.Value && !_ammoWasOn)
+            if (!NeedsGunWork() && _guns.Count == 0 && _projs.Count == 0 && !Settings.BulletTracers.Value && !_ammoWasOn)
             {
                 if (++_idleTicks % 15 != 0) return;
             }
@@ -258,7 +153,6 @@ namespace BoneCheats.Features
                 _seen.Add(g.Id);
                 ApplyRate(g);
                 ApplyProjectile(gun);
-                ApplyNoKick(gun);
                 if (Settings.InfiniteAmmo.Value) { RefillGun(gun); TopUpInventory(gun); }
                 _gunFp[i] = FirePoint(gun);
             }

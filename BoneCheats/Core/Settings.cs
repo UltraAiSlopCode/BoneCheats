@@ -16,8 +16,13 @@ namespace BoneCheats.Core
         private sealed class Item { public string Id; public Func<string> Get; public Action<string> Set; }
         private static readonly List<Item> Items = new List<Item>();
 
-        /// <summary>The file Save/Load Config use. (The live category below writes to a throw-away session file.)</summary>
-        public static string ConfigPath { get { return Path.Combine(MelonEnvironment.UserDataDirectory, "BoneCheats.cfg"); } }
+        /// <summary>Named configs live here, one "<name>.cfg" each. (The live category below writes to a throw-away session file.)</summary>
+        public static string ConfigDir { get { return Path.Combine(MelonEnvironment.UserDataDirectory, "BoneCheats", "Configs"); } }
+
+        /// <summary>The single-file config of older versions; imported once as the config "Legacy".</summary>
+        private static string LegacyPath { get { return Path.Combine(MelonEnvironment.UserDataDirectory, "BoneCheats.cfg"); } }
+
+        public const int MaxNameLength = 24;
 
         private static MelonPreferences_Entry<T> E<T>(string id, T def, string label)
         {
@@ -35,7 +40,7 @@ namespace BoneCheats.Core
         // Colour indexes everywhere: 0 red 1 green 2 blue 3 yellow 4 magenta 5 cyan 6 white 7 orange 8 rainbow
 
         // ---- Visuals ----
-        public static MelonPreferences_Entry<bool> Esp, EspNames, BulletTracers;
+        public static MelonPreferences_Entry<bool> Esp, EspNames, EspHealth, Skeleton, BulletTracers;
         public static MelonPreferences_Entry<int> EspCol, TargetCol, TracerCol;
 
         // ---- Charms ----
@@ -66,6 +71,8 @@ namespace BoneCheats.Core
 
             Esp = E("Esp", false, "ESP master switch");
             EspNames = E("EspNames", true, "ESP names");
+            EspHealth = E("EspHealth", true, "ESP health bars");
+            Skeleton = E("Skeleton", false, "ESP skeleton (stick figure)");
             BulletTracers = E("BulletTracers", false, "Bullet tracers");
             EspCol = E("EspCol", 0, "ESP colour index");
             TargetCol = E("TargetCol", 3, "Target colour index (ESP + charms)");
@@ -99,31 +106,84 @@ namespace BoneCheats.Core
             AntiGrab = E("AntiGrab", false, "Anti grab (other players can't grab you)");
             AntiGrabKill = E("AntiGrabKill", false, "...and kill whoever tried to grab you");
 
-            ResetToDefaults();      // every launch starts clean; the saved config only loads when you press "Load Config"
+            ResetToDefaults();      // every launch starts clean; a saved config only loads when you press its button
+            MigrateLegacy();
         }
 
-        /// <summary>Writes every setting to UserData/BoneCheats.cfg.</summary>
-        public static bool Save()
+        // ---------------- named configs ----------------
+
+        private static readonly string[] ReservedNames =
+            { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "LPT1", "LPT2", "LPT3" };
+
+        /// <summary>Turns whatever was typed into a safe file/button name, or null if nothing usable is left.</summary>
+        public static string CleanName(string raw)
         {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var sb = new System.Text.StringBuilder();
+            char[] bad = Path.GetInvalidFileNameChars();
+            foreach (char ch in raw.Trim())
+            {
+                if (Array.IndexOf(bad, ch) >= 0 || char.IsControl(ch)) continue;
+                sb.Append(ch);
+            }
+            string name = sb.ToString().Trim().TrimEnd('.');
+            if (name.Length > MaxNameLength) name = name.Substring(0, MaxNameLength).TrimEnd();
+            if (name.Length == 0) return null;
+            if (Array.IndexOf(ReservedNames, name.ToUpperInvariant()) >= 0) name += "_";
+            return name;
+        }
+
+        private static string PathFor(string cleanName) { return Path.Combine(ConfigDir, cleanName + ".cfg"); }
+
+        public static bool Exists(string name)
+        {
+            string c = CleanName(name);
+            return c != null && File.Exists(PathFor(c));
+        }
+
+        /// <summary>Names of every saved config, alphabetical.</summary>
+        public static List<string> ListConfigs()
+        {
+            var list = new List<string>();
             try
             {
+                if (!Directory.Exists(ConfigDir)) return list;
+                foreach (string f in Directory.GetFiles(ConfigDir, "*.cfg")) list.Add(Path.GetFileNameWithoutExtension(f));
+                list.Sort(StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception e) { MelonLogger.Warning("[Settings] couldn't list configs: " + e.Message); }
+            return list;
+        }
+
+        /// <summary>Writes every setting to ConfigDir/&lt;name&gt;.cfg. Returns the cleaned name actually used (null on failure).</summary>
+        public static string SaveAs(string name)
+        {
+            string clean = CleanName(name);
+            if (clean == null) return null;
+            try
+            {
+                Directory.CreateDirectory(ConfigDir);
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("[BoneCheats]");
                 foreach (Item i in Items) sb.AppendLine(i.Id + " = " + i.Get());
-                File.WriteAllText(ConfigPath, sb.ToString());
-                return true;
+                File.WriteAllText(PathFor(clean), sb.ToString());
+                return clean;
             }
-            catch (Exception e) { MelonLogger.Warning("[Settings] couldn't save the config: " + e.Message); return false; }
+            catch (Exception e) { MelonLogger.Warning("[Settings] couldn't save the config: " + e.Message); return null; }
         }
 
-        /// <summary>Reads UserData/BoneCheats.cfg back into the settings. False if there is no saved config.</summary>
-        public static bool Load()
+        /// <summary>Applies a saved config: everything goes back to defaults first, then the file's values are set on top,
+        /// so a config always produces the same result no matter what was on before. False if it can't be read.</summary>
+        public static bool LoadNamed(string name)
         {
+            string clean = CleanName(name);
+            if (clean == null) return false;
             try
             {
-                if (!File.Exists(ConfigPath)) return false;
+                string path = PathFor(clean);
+                if (!File.Exists(path)) return false;
                 var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (string raw in File.ReadAllLines(ConfigPath))
+                foreach (string raw in File.ReadAllLines(path))
                 {
                     string line = raw.Trim();
                     if (line.Length == 0 || line[0] == '[' || line[0] == '#' || line[0] == ';') continue;
@@ -131,11 +191,25 @@ namespace BoneCheats.Core
                     if (eq <= 0) continue;
                     map[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim().Trim('"');
                 }
+                ResetToDefaults();
                 foreach (Item i in Items)
                     if (map.TryGetValue(i.Id, out string v)) i.Set(v);
                 return true;
             }
             catch (Exception e) { MelonLogger.Warning("[Settings] couldn't load the config: " + e.Message); return false; }
+        }
+
+        /// <summary>Carries the old single BoneCheats.cfg over as a config called "Legacy" (once, never overwrites).</summary>
+        private static void MigrateLegacy()
+        {
+            try
+            {
+                if (!File.Exists(LegacyPath)) return;
+                Directory.CreateDirectory(ConfigDir);
+                string target = PathFor("Legacy");
+                if (!File.Exists(target)) File.Copy(LegacyPath, target);
+            }
+            catch (Exception e) { MelonLogger.Warning("[Settings] couldn't import the old config: " + e.Message); }
         }
 
         public static void ResetToDefaults()
