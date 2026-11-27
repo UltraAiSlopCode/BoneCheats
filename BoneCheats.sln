@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.12.12412.261 stable
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BoneCheats", "BoneCheats\BoneCheats.csproj", "{6F2B3C1D-8A4E-4B7A-9C55-1D2E3F4A5B6C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6F2B3C1D-8A4E-4B7A-9C55-1D2E3F4A5B6C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F2B3C1D-8A4E-4B7A-9C55-1D2E3F4A5B6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F2B3C1D-8A4E-4B7A-9C55-1D2E3F4A5B6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F2B3C1D-8A4E-4B7A-9C55-1D2E3F4A5B6C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B7C8D9E0-1F2A-4B3C-8D4E-5F6A7B8C9D0E}
+	EndGlobalSection
+EndGlobal
