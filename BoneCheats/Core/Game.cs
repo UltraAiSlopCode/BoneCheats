@@ -74,8 +74,7 @@ namespace BoneCheats.Core
             return hand != null ? hand.transform : null;
         }
 
-        /// <summary>The raw controller object for a hand (null if there is no rig) - shared by Stick() below and by
-        /// ControllerInput, which reflects over it to read button state without a typed reference to each button.</summary>
+        /// <summary>The controller for one hand (null if there is no rig).</summary>
         public static BaseController ControllerOf(bool right)
         {
             RigManager rig = Rig;

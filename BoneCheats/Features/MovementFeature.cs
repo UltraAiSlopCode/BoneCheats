@@ -6,91 +6,71 @@ using UnityEngine;
 namespace BoneCheats.Features
 {
     /// <summary>
-    /// Fly, noclip, walk speed multiplier.
+    /// Fly, noclip, walk speed multiplier. Deliberately simple.
     ///
-    /// Why the old noclip felt like jelly, and what this does instead:
+    /// Noclip = set detectCollisions = false on every rigidbody of YOUR rig. Nothing global is touched (no
+    /// layer-collision matrix, no colliders, no other object in the scene), so it can't leak onto spawned items
+    /// or other players, and switching it off is just detectCollisions = true again on the same bodies.
+    /// The previous versions changed the global layer matrix; props that shared a layer with the rig (spawned guns,
+    /// held items) kept falling through the floor, and the matrix could end up stuck.
     ///
-    ///  1. It switched the rig's colliders OFF. A Rigidbody's mass distribution (centre of mass and inertia tensor) is
-    ///     computed from the colliders attached to it, so with the colliders gone every limb/hand body suddenly had the
-    ///     wrong inertia, and the joint drives that hold the arms to your controllers turned sluggish and wobbly. They
-    ///     also changed again when the colliders came back. Now NO collider is touched: noclip only flips the physics
-    ///     layer-collision matrix (Physics.IgnoreLayerCollision) between the layers your rig lives on and every other
-    ///     layer, and puts it back exactly as it was when noclip stops. Raycasts / overlap queries (grabbing, laser
-    ///     pointers, UI) don't use that matrix, so interaction keeps working.
-    ///
-    ///  2. It wrote rb.position on every body each physics step. That teleports the bodies away from the joint targets
-    ///     that are driven by the controllers, so the drives fought the teleport every step (lag + wobble in the arms).
-    ///     Now bodies are only given a velocity, and it is the SAME velocity for every body of the rig: no relative
-    ///     motion between them, so the joints have nothing to correct, and nothing is ever teleported. Angular velocity
-    ///     is left alone so arm/hand rotation stays under the game's control. There is no input smoothing.
-    ///
-    ///  3. Gravity is switched off per body only while flying and restored per body afterwards.
+    /// Fly = every rig body gets the same velocity (so the joints stay relaxed) and gravity is switched off per
+    /// body, then restored per body.
     /// </summary>
     internal sealed class MovementFeature : Feature
     {
         private const float BaseWalkSpeed = 3.5f;
         private const float Deadzone = 0.15f;
-        private const float ScanIdle = 2f;           // seconds between rig body/layer rescans
 
         private readonly List<Rigidbody> _bodies = new List<Rigidbody>();
         private readonly Dictionary<int, bool> _gravity = new Dictionary<int, bool>();
-        private readonly HashSet<int> _rigLayers = new HashSet<int>();
+        private readonly Dictionary<int, bool> _detect = new Dictionary<int, bool>();   // original detectCollisions per body
 
-        // collision-matrix pairs this feature changed: (layerA, layerB) -> value they had before
-        private readonly Dictionary<int, bool> _matrixBackup = new Dictionary<int, bool>();
+        // objects held in a hand while noclip is on: they go through everything too, and are put back when let go
+        private readonly Dictionary<int, Rigidbody> _heldBodies = new Dictionary<int, Rigidbody>();
 
-        private float _nextScan;
         private IntPtr _rigPtr = IntPtr.Zero;
-        private bool _wasFlying;
-        private bool _noclipActive;
+        private bool _noclipOn;
+        private bool _flyOn;
+        private float _nextScan;
 
         public override string Name => "Movement";
 
-        protected override void Reset() { StopFly(); RestoreCollisions(); }
+        protected override void Reset() { SetNoclip(false); SetFly(false); }
 
-        /// <summary>
-        /// Runs the instant Noclip/Fly is switched off in the menu (FeatureManager.ApplyAll fires on every
-        /// settings change), instead of waiting for the next FixedTick to notice. Combined with Feature.cs's
-        /// per-slot failure pausing, this means turning the toggle off can no longer be delayed by an
-        /// unrelated FixedTick hiccup that happened to trip this feature's fixed-tick pause - Apply() has its
-        /// own pause slot and always runs.
-        /// </summary>
+        // runs the moment a setting changes in the menu, so switching off is instant
         protected override void Apply()
         {
-            if (!Settings.Noclip.Value && _noclipActive) RestoreCollisions();
-            if (!Settings.Fly.Value && !Settings.Noclip.Value && _wasFlying) StopFly();
+            if (!Settings.Noclip.Value && _noclipOn) SetNoclip(false);
+            if (!Settings.Fly.Value && !Settings.Noclip.Value && _flyOn) SetFly(false);
         }
 
         protected override void FixedTick()
         {
             Component rig = Game.Rig;
-            if (rig == null) return;
+            if (rig == null) { ForgetRig(); return; }
+
+            // new rig (level load / respawn): old bodies are gone, just forget them
+            if (rig.Pointer != _rigPtr) { ForgetRig(); _rigPtr = rig.Pointer; }
 
             bool noclip = Settings.Noclip.Value;
             bool fly = Settings.Fly.Value || noclip;
             float walk = Settings.WalkSpeedMult.Value;
             bool boost = Mathf.Abs(walk - 1f) > 0.01f;
 
-            if (rig.Pointer != _rigPtr)
-            {
-                // new rig (level load / respawn / avatar swap): forget the old bodies; layers are global so they stay restorable
-                _rigPtr = rig.Pointer;
-                _bodies.Clear(); _gravity.Clear(); _rigLayers.Clear();
-                _wasFlying = false;
-                _nextScan = 0f;
-            }
-
-            if (!noclip && _noclipActive) RestoreCollisions();
-            if (!fly && _wasFlying) StopFly();
+            if (!noclip && _noclipOn) SetNoclip(false);
+            if (!fly && _flyOn) SetFly(false);
             if (!fly && !boost) return;
 
-            float now = Time.unscaledTime;
-            if (now >= _nextScan || _bodies.Count == 0)
+            if (Time.unscaledTime >= _nextScan || _bodies.Count == 0)
             {
-                _nextScan = now + ScanIdle;
-                ScanRig(rig);
+                _nextScan = Time.unscaledTime + 1f;
+                Scan(rig);
             }
-            if (noclip) EnsureNoclip();
+
+            if (noclip && !_noclipOn) SetNoclip(true);
+            if (fly && !_flyOn) SetFly(true);
+            if (noclip) ApplyNoclipToNewBodies();
 
             Transform head = Game.Head;
             if (head == null) return;
@@ -98,16 +78,12 @@ namespace BoneCheats.Features
 
             if (fly)
             {
-                _wasFlying = true;
-                SetGravity(false);
-
                 Vector3 want = Vector3.zero;
                 if (left.magnitude > Deadzone) want += head.forward * left.y + head.right * left.x;
                 Vector2 rs = Game.Stick(true);
                 if (Mathf.Abs(rs.y) > Deadzone) want += Vector3.up * rs.y;
                 want *= Settings.FlySpeed.Value;
 
-                // same velocity on every body: they move as one, so the joints stay relaxed
                 foreach (Rigidbody rb in _bodies)
                     if (rb != null) rb.velocity = want;
             }
@@ -123,79 +99,113 @@ namespace BoneCheats.Features
             }
         }
 
-        // ---------------- rig scan ----------------
+        // ---------------- rig bodies ----------------
 
-        private void ScanRig(Component rig)
+        private void Scan(Component rig)
         {
             _bodies.Clear();
-            _rigLayers.Clear();
             foreach (Rigidbody rb in rig.GetComponentsInChildren<Rigidbody>(true))
-            {
-                if (rb == null || rb.isKinematic) continue;
-                _bodies.Add(rb);
-                _rigLayers.Add(rb.gameObject.layer);
-            }
-            foreach (Collider c in rig.GetComponentsInChildren<Collider>(true))
-                if (c != null && !c.isTrigger) _rigLayers.Add(c.gameObject.layer);
+                if (rb != null) _bodies.Add(rb);
         }
 
-        // ---------------- noclip: collision matrix ----------------
-
-        private static int Key(int a, int b) { return a < b ? a * 32 + b : b * 32 + a; }
-
-        /// <summary>Makes every rig layer ignore every other layer (not itself, so the body keeps its own joints/contacts).</summary>
-        private void EnsureNoclip()
+        private void ForgetRig()
         {
-            if (!_noclipActive)
-                MelonLoader.MelonLogger.Msg("[Noclip] rig physics layers: " + string.Join(", ", _rigLayers) +
-                                            " (ignoring collisions with every other layer until noclip is switched off)");
-            _noclipActive = true;
-            foreach (int a in _rigLayers)
+            _bodies.Clear(); _gravity.Clear(); _detect.Clear(); _heldBodies.Clear();
+            _noclipOn = false; _flyOn = false; _rigPtr = IntPtr.Zero;
+        }
+
+        // ---------------- noclip ----------------
+
+        private void SetNoclip(bool on)
+        {
+            _noclipOn = on;
+            if (on)
             {
-                for (int b = 0; b < 32; b++)
+                ApplyNoclipToNewBodies();
+                MelonLoader.MelonLogger.Msg("[Noclip] on (" + _bodies.Count + " rig bodies)");
+            }
+            else
+            {
+                int n = 0;
+                foreach (Rigidbody rb in _bodies)
                 {
-                    if (b == a || _rigLayers.Contains(b)) continue;
-                    int key = Key(a, b);
-                    if (!_matrixBackup.ContainsKey(key)) _matrixBackup[key] = Physics.GetIgnoreLayerCollision(a, b);
-                    if (!Physics.GetIgnoreLayerCollision(a, b)) Physics.IgnoreLayerCollision(a, b, true);
+                    if (rb == null) continue;
+                    if (_detect.TryGetValue(rb.GetInstanceID(), out bool orig)) { rb.detectCollisions = orig; n++; }
+                }
+                foreach (var kv in _heldBodies)
+                    if (kv.Value != null && _detect.TryGetValue(kv.Key, out bool orig)) { kv.Value.detectCollisions = orig; n++; }
+                _heldBodies.Clear();
+                _detect.Clear();
+                MelonLoader.MelonLogger.Msg("[Noclip] off - collisions restored on " + n + " rig bodies");
+            }
+        }
+
+        /// <summary>Turns collisions off on every rig body and on whatever is held in a hand (remembering each one's original value). Safe to call repeatedly.</summary>
+        private void ApplyNoclipToNewBodies()
+        {
+            foreach (Rigidbody rb in _bodies) NoCollide(rb);
+
+            // what is in the hands right now
+            var nowHeld = new HashSet<int>();
+            for (int h = 0; h < 2; h++)
+            {
+                GameObject go = Game.Held(h == 1);
+                if (go == null) continue;
+                Rigidbody root = go.GetComponentInParent<Rigidbody>();
+                if (root == null) continue;
+                foreach (Rigidbody rb in root.GetComponentsInChildren<Rigidbody>(true))
+                {
+                    if (rb == null) continue;
+                    int id = rb.GetInstanceID();
+                    nowHeld.Add(id);
+                    _heldBodies[id] = rb;
+                    NoCollide(rb);
                 }
             }
+
+            // let go of something: give it its collisions back
+            List<int> dropped = null;
+            foreach (var kv in _heldBodies)
+                if (!nowHeld.Contains(kv.Key)) (dropped ?? (dropped = new List<int>())).Add(kv.Key);
+            if (dropped != null)
+                foreach (int id in dropped)
+                {
+                    Rigidbody rb = _heldBodies[id];
+                    if (rb != null && _detect.TryGetValue(id, out bool orig)) rb.detectCollisions = orig;
+                    _detect.Remove(id);
+                    _heldBodies.Remove(id);
+                }
         }
 
-        private void RestoreCollisions()
+        private void NoCollide(Rigidbody rb)
         {
-            foreach (var kv in _matrixBackup)
-            {
-                int a = kv.Key / 32, b = kv.Key % 32;
-                Physics.IgnoreLayerCollision(a, b, kv.Value);
-            }
-            _matrixBackup.Clear();
-            _noclipActive = false;
+            if (rb == null) return;
+            int id = rb.GetInstanceID();
+            if (!_detect.ContainsKey(id)) _detect[id] = rb.detectCollisions;
+            rb.detectCollisions = false;
         }
 
-        // ---------------- fly: gravity ----------------
+        // ---------------- fly ----------------
 
-        private void SetGravity(bool on)
+        private void SetFly(bool on)
         {
+            _flyOn = on;
             foreach (Rigidbody rb in _bodies)
             {
                 if (rb == null) continue;
                 int id = rb.GetInstanceID();
-                if (!on)
+                if (on)
                 {
                     if (!_gravity.ContainsKey(id)) _gravity[id] = rb.useGravity;
                     rb.useGravity = false;
                 }
-                else if (_gravity.TryGetValue(id, out bool orig)) rb.useGravity = orig;
+                else
+                {
+                    if (_gravity.TryGetValue(id, out bool orig)) rb.useGravity = orig;
+                    rb.velocity = Vector3.zero;
+                }
             }
-            if (on) _gravity.Clear();
-        }
-
-        private void StopFly()
-        {
-            SetGravity(true);
-            foreach (Rigidbody rb in _bodies) if (rb != null) rb.velocity = Vector3.zero;
-            _wasFlying = false;
+            if (!on) _gravity.Clear();
         }
     }
 }

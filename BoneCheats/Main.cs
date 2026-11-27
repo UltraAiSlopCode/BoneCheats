@@ -15,6 +15,7 @@ namespace BoneCheats
             Settings.Init();
             MenuBuilder.Build();
             GunHooks.TryInstall(HarmonyInstance);
+            NoRecoil.TryInstall(HarmonyInstance);
             InstallFusionHooks();
             AntiRagdollFeature.TryInstall(HarmonyInstance);
             InstallAntiGrab();
@@ -29,6 +30,7 @@ namespace BoneCheats
             AntiRagdollFeature.TryInstall(HarmonyInstance);
             InstallAntiGrab();
             GunHooks.TryInstall(HarmonyInstance);   // no-op once installed; retries if the game wasn't ready yet
+            NoRecoil.TryInstall(HarmonyInstance);
             FeatureManager.OnSceneInitialized();
         }
 
@@ -46,7 +48,7 @@ namespace BoneCheats
             catch (System.Exception e) { R.WarnOnce("antigrab-missing", "[BoneCheats] Anti Grab unavailable: " + e.Message); }
         }
 
-        public override void OnUpdate() { FeatureManager.Tick(); }
+        public override void OnUpdate() { FeatureManager.Tick(); ItemSpawnerPage.Tick(); }
         public override void OnLateUpdate() { FeatureManager.LateTick(); }
         public override void OnFixedUpdate() { FeatureManager.FixedTick(); }
     }

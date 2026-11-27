@@ -15,7 +15,7 @@ namespace BoneCheats.Features
     ///             then put back, so the gun in your hand never visibly moves.
     /// Bullet TP:  same, but the fire point is also moved to just in front of the target.
     /// Infinite ammo: the magazine is topped up right before Fire() and again right after, so it can't run dry.
-    /// No recoil:  see NoRecoil - the gun's kick values are zeroed for the duration of the Fire() call only.
+    /// No recoil:  see NoRecoil - the firing body of the bullet is swapped for a dummy while the gun fires.
     /// Tracers:    Fire() can be called while the trigger is merely held (or the gun is empty), so a tracer is
     ///             only drawn when the gun's state shows that a round really left it (cartridge state changed,
     ///             chamber changed or the magazine count dropped).
@@ -32,7 +32,6 @@ namespace BoneCheats.Features
             public bool HasTarget;
             public Vector3 Target;
             public CombatFeature.ShotSnapshot Before;
-            public NoRecoil.State Recoil;
         }
 
         private static bool _installed;
@@ -70,7 +69,7 @@ namespace BoneCheats.Features
 
                 var st = new FireState { Gun = gun, Before = CombatFeature.Snapshot(gun) };
                 __state = st;       // set before anything below can throw, so Postfix always runs and restores what Begin changed
-                if (Settings.NoRecoil.Value) st.Recoil = NoRecoil.Begin(gun);
+                if (Settings.NoRecoil.Value) NoRecoil.OnPlayerFire(gun);
                 Transform fp = CombatFeature.FirePoint(gun);
                 st.Fp = fp;
 
@@ -101,11 +100,9 @@ namespace BoneCheats.Features
 
         private static void Postfix(FireState __state)
         {
+            NoRecoil.OnFireDone();
             FireState st = __state;
             if (st == null) return;
-
-            try { NoRecoil.End(st.Recoil); }
-            catch (Exception e) { R.WarnOnce("postfix-recoil", "[GunHooks] no-recoil restore error: " + e.Message); }
 
             try
             {

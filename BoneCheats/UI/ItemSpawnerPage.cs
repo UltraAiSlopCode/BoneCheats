@@ -20,9 +20,24 @@ namespace BoneCheats.UI
             Page p = root.CreatePage("Item Spawner", Color.yellow);
             AssetCatalog.EnsureBuilt();
 
-            new SpawnList("Guns", Color.red, () => AssetCatalog.Guns).Build(p);
-            new SpawnList("NPCs", Color.green, () => AssetCatalog.Npcs).Build(p);
+            Lists.Clear();
+            var guns = new SpawnList("Guns", Color.red, () => AssetCatalog.Guns);
+            var npcs = new SpawnList("NPCs", Color.green, () => AssetCatalog.Npcs);
+            Lists.Add(guns); Lists.Add(npcs);
+            guns.Build(p);
+            npcs.Build(p);
         }
+
+        private static readonly List<SpawnList> Lists = new List<SpawnList>();
+
+        /// <summary>Called every frame: once the warehouse is ready and the catalog finally has entries, redraw the lists.</summary>
+        public static void Tick()
+        {
+            try { if (AssetCatalog.PollRefresh()) RebuildAll(); }
+            catch (Exception e) { R.WarnOnce("itemspawner-poll", "[ItemSpawner] refresh failed: " + e.Message); }
+        }
+
+        private static void RebuildAll() { foreach (SpawnList l in Lists) l.Redraw(); }
 
         /// <summary>One searchable, paged button list. Guns and NPCs each get their own instance so search
         /// text and the current page never leak between the two tabs, even though the code path is identical.</summary>
@@ -49,6 +64,8 @@ namespace BoneCheats.UI
                 _page = root.CreatePage(_title, _color);
                 Rebuild();
             }
+
+            public void Redraw() { if (_page != null) Rebuild(); }
 
             private List<SpawnEntry> Filtered()
             {
@@ -83,9 +100,15 @@ namespace BoneCheats.UI
                     Rebuild();
                 });
 
+                _page.CreateFunction("Refresh List", Color.yellow, () =>
+                {
+                    AssetCatalog.ForceRebuild();
+                    ItemSpawnerPage.RebuildAll();
+                });
+
                 if (list.Count == 0)
                 {
-                    _page.CreateFunction(string.IsNullOrEmpty(_search) ? "(none installed)" : "(no matches)", Color.gray, () => { });
+                    _page.CreateFunction(string.IsNullOrEmpty(_search) ? "(none found - load a level, then Refresh List)" : "(no matches)", Color.gray, () => { });
                 }
                 else
                 {

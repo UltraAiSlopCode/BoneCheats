@@ -10,6 +10,7 @@ namespace BoneCheats.Core
         {
             new PlayerFeature(),     // god mode, infinite health
             new MovementFeature(),   // fly, noclip, walk speed
+            new NoRecoilFeature(),   // no recoil guard (the hook itself lives in NoRecoil.cs)
             new CombatFeature(),     // aim assist targeting, gun tweaks (recoil, spread, rpm, ammo, damage)
             new EspFeature(),        // health / names of other players
             new SkeletonFeature(),   // stick-figure skeleton on other players
@@ -17,7 +18,6 @@ namespace BoneCheats.Core
             new TracerFeature(),     // bullet tracers
             new AntiRagdollFeature(),// stops other players / the game from knocking you out
             new PlayerActionsFeature(), // Players page: kill / teleport to / annoy, keeps the list in sync
-            new QuickToggleHotkeys(),// Grip+Grip controller chord for Settings > Quick Toggles
         };
 
         public static void OnSceneInitialized()

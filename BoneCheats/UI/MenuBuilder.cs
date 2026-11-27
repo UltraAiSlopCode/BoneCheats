@@ -118,25 +118,12 @@ namespace BoneCheats.UI
         {
             Page p = root.CreatePage("Settings", Color.white);
 
-            BuildQuickToggles(p);
             BuildSaveConfig(p);
 
             _configsPage = p.CreatePage("Saved Configs", Color.cyan);
             RebuildConfigButtons();
 
             p.CreateFunction("Reset Everything", Color.red, ResetEverything);
-        }
-
-        /// <summary>
-        /// Settings > Quick Toggles: the on/off abilities in one flat list, so a controller can flip them with the same
-        /// point-and-click as everywhere else without hunting through sub-pages. Built from Core/QuickToggles.cs - the
-        /// same list the Grip+Grip controller hotkey (QuickToggleHotkeys) cycles through - so the two can't drift apart.
-        /// </summary>
-        private static void BuildQuickToggles(Page settings)
-        {
-            Page p = settings.CreatePage("Quick Toggles", Color.green);
-            p.CreateFunction("Hotkey: hold both Grips, Right Stick to pick, Right Trigger to flip", Color.gray, () => { });
-            foreach (QuickToggle qt in QuickToggles.All) Toggle(p, qt.Label, Color.green, qt.Entry);
         }
 
         // ---------------- saved configs ----------------
