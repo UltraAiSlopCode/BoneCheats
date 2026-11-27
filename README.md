@@ -6,7 +6,7 @@ A feature-packed BONELAB mod built with MelonLoader, BoneLib and LabFusion.
 
 BoneCheats adds a custom Cheats menu with visual enhancements, combat modifications, movement abilities, player interactions and lobby features.
 
-## 📥 Downloads
+## Download
 
 **Latest Release:** [Download BoneCheats.dll](../../releases/latest)
 
@@ -15,7 +15,7 @@ BoneCheats adds a custom Cheats menu with visual enhancements, combat modificati
 3. Make sure MelonLoader, BoneLib and LabFusion are installed.
 4. Launch BONELAB.
 
-## ✨ Features
+## Features
 
 | Category | Features |
 |---|---|
@@ -27,7 +27,7 @@ BoneCheats adds a custom Cheats menu with visual enhancements, combat modificati
 | Lobby | Player Management, Teleport, Lobby Actions, Prop Spawning |
 | Settings | Save Config, Load Config, Reset Settings |
 
-## 💻 Source Code
+## Source Code
 
 Want to explore or modify the project?
 
@@ -40,7 +40,7 @@ You can:
 - Build your own DLL.
 - Learn how the mod works.
 
-## 🔨 Building From Source
+## Building From Source
 
 **Requirements:**
 - Visual Studio 2022
