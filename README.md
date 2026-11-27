@@ -72,11 +72,6 @@ The compiled DLL will be located at:
 - Use the software at your own risk.
 
 ## ❤️ Credits
-
-- Stress Level Zero — BONELAB
-- MelonLoader
-- BoneLib
-- LabFusion
 - Claude AI
 
 **Enjoy BoneCheats!** 🦴
