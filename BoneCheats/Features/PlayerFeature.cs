@@ -6,6 +6,7 @@ using MelonLoader;
 using Health = Il2CppSLZ.Marrow.Health;
 using HealthMode = Il2CppSLZ.Marrow.Health.HealthMode;
 using PhysicsRig = Il2CppSLZ.Marrow.PhysicsRig;
+using PlayerHealth = Il2CppSLZ.Marrow.Player_Health;
 using RigManager = Il2CppSLZ.Marrow.RigManager;
 
 namespace BoneCheats.Features
@@ -20,14 +21,21 @@ namespace BoneCheats.Features
     ///   3. A once-a-second safety net: if the rig is already shut down for any reason (a state it was in
     ///      before God Mode was turned on, or one that slipped past the prefix), it's revived with
     ///      UnRagdollRig() + TurnOnRig().
+    ///   4. Harmony prefixes block Player_Health.MakeVignette() and StartHealthRegnerationAndVignette(float) on
+    ///      the LOCAL player's Player_Health only, so the red/black damage vignette never fires either, on top
+    ///      of the ragdoll guard above. NOTE: this does not touch CoFadeDeathVignette (the near-death fade) -
+    ///      that one returns an IEnumerator, which Harmony can't cleanly skip the same way, but since
+    ///      healthMode=Invincible already stops health from ever reaching the value that triggers it, it
+    ///      shouldn't fire anyway. Tell me if you still see a fade-out and I'll hook that one properly.
     ///
     /// Why it looked broken before: Apply() - the only place healthMode got (re)set - only ran on
     /// FeatureManager.ApplyAll() (menu toggle / scene load) and from Tick() when rig.Pointer changed. Between
-    /// those, nothing re-asserted healthMode, and nothing stopped RagdollRig()/ShutdownRig() at all - Invincible
-    /// blocks the health bar hitting zero, it does NOT stop the rig from being ragdolled by a hit, an explosion,
-    /// or a grab, which reads exactly like "god mode doesn't work". Tick() now re-asserts healthMode AND runs
-    /// the ragdoll guard every single tick while God Mode is on, not just on a rig swap, so nothing else in the
-    /// game gets a window to flip it back or knock you down unnoticed.
+    /// those, nothing re-asserted healthMode, and nothing stopped RagdollRig()/ShutdownRig() (or the vignette
+    /// methods) at all - Invincible blocks the health bar hitting zero, it does NOT stop the rig from being
+    /// ragdolled by a hit, an explosion, or a grab, and it does NOT stop the damage vignette either, which reads
+    /// exactly like "god mode doesn't work". Tick() now re-asserts healthMode AND runs the ragdoll guard every
+    /// single tick while God Mode is on, not just on a rig swap, so nothing else in the game gets a window to
+    /// flip it back or knock you down (or flash the screen) unnoticed.
     /// </summary>
     internal sealed class PlayerFeature : Feature
     {
@@ -44,18 +52,35 @@ namespace BoneCheats.Features
         {
             if (_hooksInstalled) return;
             _hooksInstalled = true;
-            var prefix = new HarmonyMethod(typeof(PlayerFeature).GetMethod(nameof(BlockRagdoll), BindingFlags.Static | BindingFlags.NonPublic));
+
+            var ragdollPrefix = new HarmonyMethod(typeof(PlayerFeature).GetMethod(nameof(BlockRagdoll), BindingFlags.Static | BindingFlags.NonPublic));
             foreach (string name in new[] { "RagdollRig", "ShutdownRig" })
             {
                 try
                 {
                     MethodInfo m = typeof(PhysicsRig).GetMethod(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null);
                     if (m == null) { MelonLogger.Warning("[Player] PhysicsRig." + name + "() not found."); continue; }
-                    harmony.Patch(m, prefix: prefix);
+                    harmony.Patch(m, prefix: ragdollPrefix);
                     MelonLogger.Msg("[Player] hooked PhysicsRig." + name + "() for God Mode's ragdoll guard");
                 }
                 catch (Exception e) { MelonLogger.Warning("[Player] couldn't hook " + name + ": " + e.Message); }
             }
+
+            var vignettePrefix = new HarmonyMethod(typeof(PlayerFeature).GetMethod(nameof(BlockVignette), BindingFlags.Static | BindingFlags.NonPublic));
+            PatchVignetteMethod(harmony, vignettePrefix, "MakeVignette", Type.EmptyTypes);
+            PatchVignetteMethod(harmony, vignettePrefix, "StartHealthRegnerationAndVignette", new[] { typeof(float) });
+        }
+
+        private static void PatchVignetteMethod(HarmonyLib.Harmony harmony, HarmonyMethod prefix, string name, Type[] args)
+        {
+            try
+            {
+                MethodInfo m = typeof(PlayerHealth).GetMethod(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, args, null);
+                if (m == null) { MelonLogger.Warning("[Player] Player_Health." + name + "(...) not found."); return; }
+                harmony.Patch(m, prefix: prefix);
+                MelonLogger.Msg("[Player] hooked Player_Health." + name + "(...) for God Mode's vignette guard");
+            }
+            catch (Exception e) { MelonLogger.Warning("[Player] couldn't hook " + name + ": " + e.Message); }
         }
 
         // Returning false skips the original method (RagdollRig/ShutdownRig never runs).
@@ -65,6 +90,20 @@ namespace BoneCheats.Features
             RigManager rig = Game.Rig;
             if (rig == null || rig.physicsRig == null) return true;
             return __instance.Pointer != rig.physicsRig.Pointer;   // only protect the local rig
+        }
+
+        // Same idea, for the damage vignette (the red/black flash on taking a hit): skip it entirely for the
+        // local player's Player_Health while God Mode is on. Works on both patched methods since both take no
+        // meaningful __instance-independent state we need - we only care whose Player_Health this is.
+        private static bool BlockVignette(PlayerHealth __instance)
+        {
+            if (!Settings.GodMode.Value) return true;
+            RigManager rig = Game.Rig;
+            Health health = rig != null ? rig.health : null;
+            if (health == null) return true;
+            PlayerHealth mine = health.TryCast<PlayerHealth>();
+            if (mine == null) return true;
+            return __instance.Pointer != mine.Pointer;   // only protect the local player's own Player_Health
         }
 
         protected override void Apply()
