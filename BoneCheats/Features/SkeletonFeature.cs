@@ -48,6 +48,7 @@ namespace BoneCheats.Features
         {
             public LineRenderer Line;
             public readonly Transform[] Bones = new Transform[BoneCount];
+            public readonly Vector3[] Pts = new Vector3[BoneCount];     // every bone position read once per frame
             public Il2CppStructArray<Vector3> Pos = new Il2CppStructArray<Vector3>(Path.Length);
             public bool HasBones;
             public float NextBuild;
@@ -108,19 +109,23 @@ namespace BoneCheats.Features
                         if (!v.HasBones) continue;
                     }
 
+                    // read each bone once (the old code read hips / legs several times per frame)
+                    Vector3[] pts = v.Pts;
+                    for (int i = 0; i < BoneCount; i++) pts[i] = v.Bones[i].position;
+
                     // the extra line between the legs: starts at the midpoint of the hip joints, hangs down and a bit forward
-                    Vector3 hips = v.Bones[Hips].position;
-                    Vector3 crotch = (v.Bones[UlL].position + v.Bones[UlR].position) * 0.5f;
-                    Vector3 down = (hips - v.Bones[Chest].position).normalized;
-                    Vector3 side = v.Bones[UlR].position - v.Bones[UlL].position;
+                    Vector3 hips = pts[Hips];
+                    Vector3 crotch = (pts[UlL] + pts[UlR]) * 0.5f;
+                    Vector3 down = (hips - pts[Chest]).normalized;
+                    Vector3 side = pts[UlR] - pts[UlL];
                     Vector3 fwd = Vector3.Cross(side, -down).normalized;
-                    float scale = Mathf.Max(0.3f, (v.Bones[Neck].position - hips).magnitude / 0.5f);   // follows avatar size
+                    float scale = Mathf.Max(0.3f, (pts[Neck] - hips).magnitude / 0.5f);   // follows avatar size
                     Vector3 dong = crotch + down * (0.10f * scale) + fwd * (0.08f * scale);
 
                     for (int i = 0; i < Path.Length; i++)
                     {
                         int b = Path[i];
-                        v.Pos[i] = b == Crotch ? crotch : b == Dong ? dong : v.Bones[b].position;
+                        v.Pos[i] = b == Crotch ? crotch : b == Dong ? dong : pts[b];
                     }
                     v.Line.SetPositions(v.Pos);
 

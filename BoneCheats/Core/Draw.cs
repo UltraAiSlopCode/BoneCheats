@@ -131,6 +131,22 @@ namespace BoneCheats.Core
         }
 
         private const int CornerSegments = 6;
+        private const int PerCorner = CornerSegments + 1;
+        private const int PillRim = 4 * PerCorner;
+
+        // Reused buffers: the health bar rebuilds its meshes while health drains, so nothing is allocated per call.
+        private static readonly float[] CornerA0 = { -90f, 0f, 90f, 180f };
+        private static readonly float[] CornerX = new float[4];
+        private static readonly float[] CornerY = new float[4];
+        private static readonly Vector3[] PillVerts = new Vector3[PillRim + 1];
+        private static readonly Color[] PillCols = new Color[PillRim + 1];
+        private static readonly int[] PillTris = new int[PillRim * 3];
+        private static Il2CppStructArray<Vector3> _vArr;
+        private static Il2CppStructArray<Color> _cArr;
+        private static Il2CppStructArray<int> _tArr;
+        private static readonly float[] CosT = new float[PerCorner * 4];
+        private static readonly float[] SinT = new float[PerCorner * 4];
+        private static bool _trig;
 
         /// <summary>
         /// Fills <paramref name="mesh"/> with a rounded rectangle ("pill") in the XY plane, centred vertically on y = 0 and
@@ -139,48 +155,67 @@ namespace BoneCheats.Core
         /// </summary>
         public static void BuildPill(Mesh mesh, float left, float width, float height, float radius, Color top, Color bottom)
         {
+            if (!_trig)
+            {
+                for (int c = 0; c < 4; c++)
+                    for (int i = 0; i <= CornerSegments; i++)
+                    {
+                        float a = (CornerA0[c] + 90f * i / CornerSegments) * Mathf.Deg2Rad;
+                        CosT[c * PerCorner + i] = Mathf.Cos(a);
+                        SinT[c * PerCorner + i] = Mathf.Sin(a);
+                    }
+                for (int i = 0; i < PillRim; i++)
+                {
+                    PillTris[i * 3] = PillRim;
+                    PillTris[i * 3 + 1] = i;
+                    PillTris[i * 3 + 2] = (i + 1) % PillRim;
+                }
+                _vArr = new Il2CppStructArray<Vector3>(PillRim + 1);
+                _cArr = new Il2CppStructArray<Color>(PillRim + 1);
+                _tArr = new Il2CppStructArray<int>(PillTris);
+                _trig = true;
+            }
+
             float hh = height * 0.5f;
             float r = Mathf.Max(0.0001f, Mathf.Min(radius, Mathf.Min(width * 0.5f, hh)));
             float right = left + width;
 
             // corner centres, counter-clockwise from the bottom-right corner
-            float[] cx = { right - r, right - r, left + r, left + r };
-            float[] cy = { -hh + r, hh - r, hh - r, -hh + r };
-            float[] a0 = { -90f, 0f, 90f, 180f };
-
-            int perCorner = CornerSegments + 1;
-            int n = 4 * perCorner;
-            var verts = new Vector3[n + 1];
-            var cols = new Color[n + 1];
-            var tris = new int[n * 3];
+            CornerX[0] = right - r; CornerY[0] = -hh + r;
+            CornerX[1] = right - r; CornerY[1] = hh - r;
+            CornerX[2] = left + r;  CornerY[2] = hh - r;
+            CornerX[3] = left + r;  CornerY[3] = -hh + r;
 
             int k = 0;
             for (int c = 0; c < 4; c++)
             {
                 for (int i = 0; i <= CornerSegments; i++)
                 {
-                    float a = (a0[c] + 90f * i / CornerSegments) * Mathf.Deg2Rad;
-                    float x = cx[c] + Mathf.Cos(a) * r;
-                    float y = cy[c] + Mathf.Sin(a) * r;
-                    verts[k] = new Vector3(x, y, 0f);
-                    cols[k] = Color.Lerp(bottom, top, Mathf.InverseLerp(-hh, hh, y));
+                    float x = CornerX[c] + CosT[c * PerCorner + i] * r;
+                    float y = CornerY[c] + SinT[c * PerCorner + i] * r;
+                    PillVerts[k] = new Vector3(x, y, 0f);
+                    PillCols[k] = Color.Lerp(bottom, top, Mathf.InverseLerp(-hh, hh, y));
                     k++;
                 }
             }
-            verts[n] = new Vector3(left + width * 0.5f, 0f, 0f);
-            cols[n] = Color.Lerp(bottom, top, 0.5f);
+            PillVerts[PillRim] = new Vector3(left + width * 0.5f, 0f, 0f);
+            PillCols[PillRim] = Color.Lerp(bottom, top, 0.5f);
 
-            for (int i = 0; i < n; i++)
+            for (int i = 0; i <= PillRim; i++) { _vArr[i] = PillVerts[i]; _cArr[i] = PillCols[i]; }
+
+            // Same vertex count every time: only the first build needs Clear() + triangles.
+            if (mesh.vertexCount != PillRim + 1)
             {
-                tris[i * 3] = n;
-                tris[i * 3 + 1] = i;
-                tris[i * 3 + 2] = (i + 1) % n;
+                mesh.Clear();
+                mesh.vertices = _vArr;
+                mesh.colors = _cArr;
+                mesh.triangles = _tArr;
             }
-
-            mesh.Clear();
-            mesh.vertices = new Il2CppStructArray<Vector3>(verts);
-            mesh.colors = new Il2CppStructArray<Color>(cols);
-            mesh.triangles = new Il2CppStructArray<int>(tris);
+            else
+            {
+                mesh.vertices = _vArr;
+                mesh.colors = _cArr;
+            }
             mesh.RecalculateBounds();
         }
 

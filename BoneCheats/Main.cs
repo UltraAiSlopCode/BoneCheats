@@ -3,7 +3,7 @@ using BoneCheats.Features;
 using BoneCheats.UI;
 using MelonLoader;
 
-[assembly: MelonInfo(typeof(BoneCheats.Main), "BoneCheats", "1.1.0", "HoodRape")]
+[assembly: MelonInfo(typeof(BoneCheats.Main), "BoneCheats", BoneCheats.Core.Updater.CurrentVersion, "HoodRape")]
 [assembly: MelonGame("Stress Level Zero", "BONELAB")]
 
 namespace BoneCheats
@@ -13,6 +13,7 @@ namespace BoneCheats
         public override void OnInitializeMelon()
         {
             Settings.Init();
+            try { Updater.Start(); } catch { }   // the updater must never keep the mod from loading
             MenuBuilder.Build();
             GunHooks.TryInstall(HarmonyInstance);
             NoRecoil.TryInstall(HarmonyInstance);
@@ -48,7 +49,7 @@ namespace BoneCheats
             catch (System.Exception e) { R.WarnOnce("antigrab-missing", "[BoneCheats] Anti Grab unavailable: " + e.Message); }
         }
 
-        public override void OnUpdate() { FeatureManager.Tick(); ItemSpawnerPage.Tick(); }
+        public override void OnUpdate() { FeatureManager.Tick(); ItemSpawnerPage.Tick(); Updater.Tick(); }
         public override void OnLateUpdate() { FeatureManager.LateTick(); }
         public override void OnFixedUpdate() { FeatureManager.FixedTick(); }
     }

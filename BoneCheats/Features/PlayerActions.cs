@@ -174,9 +174,49 @@ namespace BoneCheats.Features
         /// (NetworkPlayer.AvatarSetter.AvatarBarcode; falls back to their rig's avatarID), and the swap is the
         /// game's own RigManager.SwapAvatarCrate, so Fusion syncs it to everyone like a normal avatar change.
         /// If the avatar isn't installed on your PC the game can't load it and you keep your current one.
+        ///
+        /// Restore My Avatar used to do one swap call and forget about it, using whatever RigManager.avatarID said
+        /// at clone time. Now: the real avatar is tracked while you are NOT cloned (so it is known before any swap
+        /// starts), it is read from the rig's AvatarCrate first, and a restore keeps going until the rig reports
+        /// the original avatar again (re-sending the swap every 2.5 s, up to 4 times) instead of firing once.
         /// </summary>
         private static string _savedAvatar;      // your real avatar's barcode, remembered the first time you clone one
         private static bool _avatarCloned;
+        private static string _baselineAvatar;   // last avatar seen on you while not cloned
+        private static float _nextBaseline;
+        private static string _restoreTarget;    // non-null while a restore is in progress
+        private static int _restoreTries;
+        private static float _restoreNext;
+        private static float _restoreUntil;
+
+        /// <summary>The barcode of the avatar currently on YOUR rig (AvatarCrate first, RigManager.avatarID as fallback).</summary>
+        private static string OwnAvatarId(RigManager me)
+        {
+            if (me == null) return null;
+            try
+            {
+                object crate = R.GetRaw(me, "AvatarCrate");
+                object barcode = R.GetRaw(crate, "Barcode");
+                string id = R.GetRaw(barcode, "ID") as string;
+                if (!string.IsNullOrEmpty(id)) return id;
+            }
+            catch { }
+            try { if (!string.IsNullOrEmpty(me.avatarID)) return me.avatarID; } catch { }
+            return null;
+        }
+
+        /// <summary>Called every tick: remembers your real avatar while you aren't cloned, and drives a pending restore.</summary>
+        public static void TickAvatar()
+        {
+            float now = Time.unscaledTime;
+
+            if (_restoreTarget != null) { StepRestore(now); return; }
+            if (_avatarCloned || now < _nextBaseline) return;
+            _nextBaseline = now + 1f;
+
+            string id = OwnAvatarId(Game.Rig);
+            if (!string.IsNullOrEmpty(id)) _baselineAvatar = id;
+        }
 
         public static void CloneAvatar(byte id)
         {
@@ -199,9 +239,18 @@ namespace BoneCheats.Features
 
             RigManager me = Game.Rig;
             if (me == null) return;
-            if (me.avatarID == barcode) return;
 
-            if (!_avatarCloned) { _savedAvatar = me.avatarID; _avatarCloned = true; }
+            string current = OwnAvatarId(me);
+            if (current == barcode) return;
+
+            _restoreTarget = null;                                   // a new clone cancels any pending restore
+            if (!_avatarCloned)
+            {
+                // the tracked baseline was read while no swap was running, so it beats reading the rig mid-swap
+                string real = !string.IsNullOrEmpty(_baselineAvatar) ? _baselineAvatar : current;
+                if (!string.IsNullOrEmpty(real)) { _savedAvatar = real; _avatarCloned = true; }
+                else MelonLogger.Warning("[Players] couldn't read your current avatar - Restore My Avatar won't know what to go back to.");
+            }
 
             me.SwapAvatarCrate(new Barcode(barcode), false, null);
             MelonLogger.Msg("[Players] cloning " + p.Name + "'s avatar: " + barcode);
@@ -210,13 +259,55 @@ namespace BoneCheats.Features
         /// <summary>Puts your own avatar back the way it was before the first Clone Avatar.</summary>
         public static void RestoreAvatar()
         {
-            if (!_avatarCloned || string.IsNullOrEmpty(_savedAvatar)) return;
-            RigManager me = Game.Rig;
-            if (me == null) return;
+            string target = !string.IsNullOrEmpty(_savedAvatar) && _avatarCloned ? _savedAvatar : _baselineAvatar;
+            if (string.IsNullOrEmpty(target)) { Game.Notify("No original avatar on record yet."); return; }
 
-            me.SwapAvatarCrate(new Barcode(_savedAvatar), false, null);
-            _avatarCloned = false;
-            MelonLogger.Msg("[Players] avatar restored.");
+            RigManager me = Game.Rig;
+            if (me == null) { Game.Notify("No rig to restore onto."); return; }
+
+            if (!_avatarCloned && OwnAvatarId(me) == target) { Game.Notify("You're already on your own avatar."); return; }
+
+            _restoreTarget = target;
+            _restoreTries = 0;
+            _restoreNext = 0f;
+            _restoreUntil = Time.unscaledTime + 20f;
+            StepRestore(Time.unscaledTime);
+        }
+
+        private static void StepRestore(float now)
+        {
+            if (_restoreTarget == null || now < _restoreNext) return;
+
+            RigManager me = Game.Rig;
+            if (me == null)
+            {
+                if (now > _restoreUntil) { _restoreTarget = null; }     // no rig for 20 s (loading screen?): give up quietly
+                return;
+            }
+
+            // done: the rig reports the original avatar again
+            if (_restoreTries > 0 && OwnAvatarId(me) == _restoreTarget)
+            {
+                _restoreTarget = null;
+                _avatarCloned = false;
+                _baselineAvatar = OwnAvatarId(me);
+                MelonLogger.Msg("[Players] avatar restored.");
+                Game.Notify("Avatar restored.");
+                return;
+            }
+
+            if (_restoreTries >= 4 || now > _restoreUntil)
+            {
+                MelonLogger.Warning("[Players] restore sent " + _restoreTries + " time(s) but the rig never reported the original avatar - is it installed? Press Restore again to retry.");
+                _restoreTarget = null;                                   // _avatarCloned stays set so another press can retry
+                return;
+            }
+
+            try { me.SwapAvatarCrate(new Barcode(_restoreTarget), false, null); }
+            catch (Exception e) { MelonLogger.Warning("[Players] restore swap failed: " + e.Message); }
+            _restoreTries++;
+            _restoreNext = now + 2.5f;
+            MelonLogger.Msg("[Players] restoring avatar (attempt " + _restoreTries + "): " + _restoreTarget);
         }
 
         // ---------------- Teleport To ----------------
@@ -342,6 +433,7 @@ namespace BoneCheats.Features
             Players.Refresh(false);
             PlayerActions.TickAnnoy();
             PlayerActions.TickKillLoop();
+            PlayerActions.TickAvatar();
             PropSpam.Tick();
             UI.MenuBuilder.SyncPropSpamToggle();
             UI.PlayersPage.SyncIfChanged();

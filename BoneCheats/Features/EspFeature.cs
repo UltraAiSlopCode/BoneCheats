@@ -29,6 +29,7 @@ namespace BoneCheats.Features
         private static readonly Color OutlineIdle = new Color(1f, 1f, 1f, 0.28f);
         private static readonly Color TrailColor = new Color(1f, 1f, 1f, 0.55f);
         private static readonly Color PctColor = new Color(1f, 1f, 1f, 0.92f);
+        private static readonly Color UnknownFill = new Color(0.62f, 0.64f, 0.7f, 1f);   // grey: no usable health value for this player
 
         private sealed class Vis
         {
@@ -46,7 +47,9 @@ namespace BoneCheats.Features
             public float Trail = 1f;
             public float BuiltFill = -1f, BuiltTrail = -1f;
             public bool BuiltTarget;
+            public bool BuiltUnknown;
             public int LastPct = -1;
+            public float LastScale = -1f;
         }
 
         private readonly Dictionary<IntPtr, Vis> _vis = new Dictionary<IntPtr, Vis>();
@@ -121,16 +124,15 @@ namespace BoneCheats.Features
             // Grows gently with distance so it stays readable but never gets huge.
             float scale = Mathf.Clamp(0.6f + dist * 0.05f, 0.65f, 3.4f);
 
-            float hp = showHealth ? p.HealthFraction() : -1f;
-            bool bar = showHealth && hp >= 0f && v.BarGo != null;
+            float hp = showHealth ? p.HealthFraction() : -1f;      // -1 = no usable value: the bar is still drawn, grey with "?"
+            bool bar = showHealth && v.BarGo != null;
 
             // With a bar the label sits a bit higher so the bar clears the top of the head at any scale.
             float lift = bar ? 0.26f + 0.06f * scale : 0.32f;
 
             Transform t = v.Label.transform;
-            t.position = headPos + Vector3.up * lift;
-            t.rotation = Quaternion.LookRotation(toHead);
-            t.localScale = Vector3.one * scale;
+            t.SetPositionAndRotation(headPos + Vector3.up * lift, Quaternion.LookRotation(toHead));   // one interop call instead of two
+            if (Mathf.Abs(scale - v.LastScale) > 0.01f) { t.localScale = Vector3.one * scale; v.LastScale = scale; }
 
             // name
             if (v.NameGo != null && v.NameGo.activeSelf != showName) v.NameGo.SetActive(showName);
@@ -155,11 +157,15 @@ namespace BoneCheats.Features
 
         private static void UpdateBar(Vis v, float hp, bool isTarget, float dt)
         {
+            bool unknown = hp < 0f;
+            float shown = unknown ? 1f : hp;
+
             if (!v.BarBuilt)
             {
-                v.Trail = hp;
+                v.Trail = shown;
                 v.BuiltFill = v.BuiltTrail = -1f;
                 v.BuiltTarget = !isTarget;                 // forces the outline to be built below
+                v.BuiltUnknown = !unknown;
                 Draw.BuildPill(v.PlateMesh, -BarWidth * 0.5f, BarWidth, BarHeight, BarRadius, PlateColor, PlateColor);
                 v.BarBuilt = true;
             }
@@ -173,24 +179,36 @@ namespace BoneCheats.Features
                 v.BuiltTarget = isTarget;
             }
 
-            // trail: jumps up with healing, drains smoothly after damage
-            if (hp >= v.Trail) v.Trail = hp;
-            else v.Trail = Mathf.Lerp(v.Trail, hp, 1f - Mathf.Exp(-3f * dt));
-            if (v.Trail - hp < 0.003f) v.Trail = hp;
-
-            if (Mathf.Abs(hp - v.BuiltFill) > 0.004f)
+            // switching between known / unknown health forces the fill and trail to be rebuilt
+            if (unknown != v.BuiltUnknown)
             {
-                BuildPart(v.FillMesh, v.FillRenderer, hp, FillColor(hp));
-                v.BuiltFill = hp;
+                v.BuiltUnknown = unknown;
+                v.BuiltFill = v.BuiltTrail = -1f;
+                v.Trail = shown;
             }
-            if (Mathf.Abs(v.Trail - v.BuiltTrail) > 0.004f)
+
+            // trail: jumps up with healing, drains smoothly after damage
+            if (shown >= v.Trail) v.Trail = shown;
+            else v.Trail = Mathf.Lerp(v.Trail, shown, 1f - Mathf.Exp(-3f * dt));
+            if (v.Trail - shown < 0.01f) v.Trail = shown;
+
+            // 1 % steps: the bar is only ~0.44 units wide, finer rebuilds are invisible and just churn the meshes
+            if (Mathf.Abs(shown - v.BuiltFill) > 0.01f || (v.BuiltFill != shown && (shown <= 0.001f || shown >= 0.999f)))
             {
-                BuildPart(v.TrailMesh, v.TrailRenderer, v.Trail, TrailColor);
+                BuildPart(v.FillMesh, v.FillRenderer, shown, unknown ? UnknownFill : FillColor(shown));
+                v.BuiltFill = shown;
+            }
+            if (Mathf.Abs(v.Trail - v.BuiltTrail) > 0.01f || (v.BuiltTrail != v.Trail && v.Trail <= v.BuiltFill + 0.0001f))
+            {
+                BuildPart(v.TrailMesh, v.TrailRenderer, unknown ? 0f : v.Trail, TrailColor);
                 v.BuiltTrail = v.Trail;
             }
 
-            int pct = Mathf.RoundToInt(hp * 100f);
-            if (pct != v.LastPct && v.Pct != null) { v.Pct.text = pct + "%"; v.LastPct = pct; }
+            if (v.Pct != null)
+            {
+                int pct = unknown ? -2 : Mathf.RoundToInt(hp * 100f);
+                if (pct != v.LastPct) { v.Pct.text = unknown ? "?" : pct + "%"; v.LastPct = pct; }
+            }
         }
 
         /// <summary>A bar segment from the left end of the plate, <paramref name="fraction"/> of the full width.</summary>

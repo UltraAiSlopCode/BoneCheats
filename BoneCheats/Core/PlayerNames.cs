@@ -21,6 +21,7 @@ namespace BoneCheats.Core
     {
         public static readonly List<FusionEntry> Entries = new List<FusionEntry>();
         private static float _next;
+        private static readonly Dictionary<string, string> NameCache = new Dictionary<string, string>();
 
         public static void Clear() { Entries.Clear(); _next = 0f; }
 
@@ -48,6 +49,16 @@ namespace BoneCheats.Core
         private static string Clean(string s)
         {
             if (string.IsNullOrEmpty(s)) return null;
+            string cached;
+            if (NameCache.TryGetValue(s, out cached)) return cached;     // refreshed every second: don't rebuild the string each time
+            if (NameCache.Count > 256) NameCache.Clear();
+            cached = CleanUncached(s);
+            NameCache[s] = cached;
+            return cached;
+        }
+
+        private static string CleanUncached(string s)
+        {
             var sb = new System.Text.StringBuilder();
             bool tag = false;
             foreach (char ch in s)
