@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\garrys\\Downloads\\BoneCheats_SourceCode_Fixed\\BoneCheats_SourceCode\\BoneCheats\\BoneCheats.csproj": {}
+    "C:\\Users\\garrys\\Downloads\\BoneCheats_SourceCode\\BoneCheats\\BoneCheats.csproj": {}
   },
   "projects": {
-    "C:\\Users\\garrys\\Downloads\\BoneCheats_SourceCode_Fixed\\BoneCheats_SourceCode\\BoneCheats\\BoneCheats.csproj": {
+    "C:\\Users\\garrys\\Downloads\\BoneCheats_SourceCode\\BoneCheats\\BoneCheats.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\garrys\\Downloads\\BoneCheats_SourceCode_Fixed\\BoneCheats_SourceCode\\BoneCheats\\BoneCheats.csproj",
+        "projectUniqueName": "C:\\Users\\garrys\\Downloads\\BoneCheats_SourceCode\\BoneCheats\\BoneCheats.csproj",
         "projectName": "BoneCheats",
-        "projectPath": "C:\\Users\\garrys\\Downloads\\BoneCheats_SourceCode_Fixed\\BoneCheats_SourceCode\\BoneCheats\\BoneCheats.csproj",
+        "projectPath": "C:\\Users\\garrys\\Downloads\\BoneCheats_SourceCode\\BoneCheats\\BoneCheats.csproj",
         "packagesPath": "C:\\Users\\garrys\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\garrys\\Downloads\\BoneCheats_SourceCode_Fixed\\BoneCheats_SourceCode\\BoneCheats\\obj\\",
+        "outputPath": "C:\\Users\\garrys\\Downloads\\BoneCheats_SourceCode\\BoneCheats\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\garrys\\AppData\\Roaming\\NuGet\\NuGet.Config",

@@ -60,7 +60,7 @@ namespace BoneCheats.Core
         public static MelonPreferences_Entry<float> FlySpeed, WalkSpeedMult;
 
         // ---- Player ----
-        public static MelonPreferences_Entry<bool> GodMode, AntiRagdoll, AntiGrab, AntiGrabKill;
+        public static MelonPreferences_Entry<bool> GodMode, AntiGrab, AntiGrabKill;
 
         // ---- Lobby ----
 
@@ -101,8 +101,7 @@ namespace BoneCheats.Core
             FlySpeed = E("FlySpeed", 8f, "Fly speed (m/s)");
             WalkSpeedMult = E("WalkSpeedMult", 1f, "Walk speed multiplier");
 
-            GodMode = E("GodMode", false, "God mode");
-            AntiRagdoll = E("AntiRagdoll", false, "Anti ragdoll");
+            GodMode = E("GodMode", false, "God mode (invincible + can't be ragdolled/knocked out)");
             AntiGrab = E("AntiGrab", false, "Anti grab (other players can't grab you)");
             AntiGrabKill = E("AntiGrabKill", false, "...and kill whoever tried to grab you");
 

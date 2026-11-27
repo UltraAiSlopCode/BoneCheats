@@ -8,7 +8,7 @@ namespace BoneCheats.Core
         // To add a cheat: write a Feature subclass in /Features and list it here.
         private static readonly List<Feature> Features = new List<Feature>
         {
-            new PlayerFeature(),     // god mode, infinite health
+            new PlayerFeature(),     // god mode: invincible health + ragdoll/knockout guard, all one toggle
             new MovementFeature(),   // fly, noclip, walk speed
             new NoRecoilFeature(),   // no recoil guard (the hook itself lives in NoRecoil.cs)
             new CombatFeature(),     // aim assist targeting, gun tweaks (recoil, spread, rpm, ammo, damage)
@@ -16,7 +16,6 @@ namespace BoneCheats.Core
             new SkeletonFeature(),   // stick-figure skeleton on other players
             new CharmFeature(),      // full-body charms (self, players, weapons)
             new TracerFeature(),     // bullet tracers
-            new AntiRagdollFeature(),// stops other players / the game from knocking you out
             new PlayerActionsFeature(), // Players page: kill / teleport to / annoy, keeps the list in sync
         };
 

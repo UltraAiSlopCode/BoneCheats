@@ -63,6 +63,7 @@ namespace BoneCheats.UI
                 Page pp = _page.CreatePage(name, Color.white);
                 pp.CreateFunction("Kill", Color.red, () => PlayerActions.Kill(id));
                 pp.CreateBool("Kill (loop)", Color.red, PlayerActions.IsKillLooping(id), v => PlayerActions.SetKillLoop(id, v));
+                pp.CreateFunction("Clone Name", Color.cyan, () => PlayerActions.CloneName(id));
                 pp.CreateFunction("Clone Avatar", Color.magenta, () => PlayerActions.CloneAvatar(id));
                 pp.CreateFunction("Teleport To", Color.cyan, () => PlayerActions.TeleportTo(id));
                 pp.CreateBool("Annoy (Poke spam)", Color.yellow, PlayerActions.IsAnnoying(id), v => PlayerActions.SetAnnoy(id, v));

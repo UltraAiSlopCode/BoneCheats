@@ -25,6 +25,12 @@ namespace BoneCheats.UI
         private static Page _configsPage;          // Settings > Saved Configs: one button per saved config
         private static string _pendingName = "";   // what was typed into the Save Config keyboard
 
+        // Prop Spam can turn itself off (the RunDuration timer in PropSpamFeature.cs) without anyone touching
+        // the menu, so unlike every MelonPreferences-backed Toggle() above, this checkbox can't rely on the
+        // Sync list (that only runs on Reset/Load). SyncPropSpamToggle() below polls it back into the checkbox
+        // every tick instead, so the menu doesn't keep showing "on" for 20+ seconds after it actually stopped.
+        private static BoolElement _propSpamElement;
+
         public static void Build()
         {
             Page root = Page.Root.CreatePage("BoneCheats", Color.red);
@@ -37,7 +43,6 @@ namespace BoneCheats.UI
             BuildLobby(root);
             ItemSpawnerPage.Build(root);
             BuildSettings(root);
-
         }
 
         // ---------------- pages ----------------
@@ -98,8 +103,7 @@ namespace BoneCheats.UI
         private static void BuildPlayer(Page root)
         {
             Page p = root.CreatePage("Player", Color.magenta);
-            Toggle(p, "God Mode", Color.green, Settings.GodMode);
-            Toggle(p, "Anti Ragdoll", Color.green, Settings.AntiRagdoll);
+            Toggle(p, "God Mode", Color.green, Settings.GodMode);   // invincible + can't be ragdolled/knocked out
             Toggle(p, "Anti Grab", Color.green, Settings.AntiGrab);
             Toggle(p, "  -> also kill the grabber", Color.red, Settings.AntiGrabKill);
         }
@@ -107,11 +111,13 @@ namespace BoneCheats.UI
         private static void BuildLobby(Page root)
         {
             Page p = root.CreatePage("Lobby", Color.yellow);
-            p.CreateBool("Prop Spam (Crash Lobby)", Color.magenta, PropSpam.IsOn(), v => PropSpam.SetAll(v));
+            _propSpamElement = p.CreateBool("Prop Spam (Crash Lobby)", Color.magenta, PropSpam.IsOn(), v => PropSpam.SetAll(v));
             p.CreateFunction("Kill All", Color.red, () => PlayerActions.KillAll());
             p.CreateBool("Kill Loop All", Color.red, PlayerActions.IsKillLoopAllOn(), v => PlayerActions.SetKillLoopAll(v));
             p.CreateBool("Annoy All", Color.yellow, PlayerActions.IsAnnoyAllOn(), v => PlayerActions.SetAnnoyAll(v));
-            PlayersPage.Build(p);       // Lobby > Players > <player> > Kill / Kill (loop) / Teleport To / Annoy
+            p.CreateFunction("Restore My Name", Color.cyan, () => PlayerActions.RestoreName());
+            p.CreateFunction("Restore My Avatar", Color.cyan, () => PlayerActions.RestoreAvatar());
+            PlayersPage.Build(p);       // Lobby > Players > <player> > Clone Name / Clone Avatar / Kill / Kill (loop) / Teleport To / Annoy
         }
 
         private static void BuildSettings(Page root)
@@ -256,14 +262,24 @@ namespace BoneCheats.UI
             return null;
         }
 
+        /// <summary>Keeps the Prop Spam checkbox honest when PropSpam turns itself off (RunDuration timer)
+        /// instead of being toggled from the menu. Called every tick from PlayerActionsFeature.Tick().</summary>
+        public static void SyncPropSpamToggle()
+        {
+            if (_propSpamElement == null) return;
+            bool on = PropSpam.IsOn();
+            if (_propSpamElement.Value != on) _propSpamElement.Value = on;
+        }
+
         // ---------------- element helpers ----------------
 
-        private static void Toggle(Page page, string name, Color color, MelonPreferences_Entry<bool> entry)
+        private static void Toggle(Page page, string name, Color color, MelonPreferences_Entry<bool> entry, Action<bool> onChanged = null)
         {
             BoolElement el = null;
-            el = page.CreateBool(name, color, entry.Value, v => Changed(entry, v));
+            el = page.CreateBool(name, color, entry.Value, v => { Changed(entry, v); onChanged?.Invoke(v); });
             Action refresh = () => { if (el.Value != entry.Value) el.Value = entry.Value; };
             Sync.Add(refresh);
+            if (onChanged != null) Sync.Add(() => onChanged(entry.Value));   // config load / Reset Everything also re-applies the effect, not just the checkbox
             if (!Mirrors.TryGetValue(entry, out List<Action> list)) Mirrors[entry] = list = new List<Action>();
             list.Add(refresh);
         }

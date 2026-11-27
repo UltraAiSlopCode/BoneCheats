@@ -15,7 +15,7 @@ namespace BoneCheats.UI
     /// </summary>
     internal static class ItemSpawnerPage
     {
-        public static void Build(Page root)
+        public static Page Build(Page root)
         {
             Page p = root.CreatePage("Item Spawner", Color.yellow);
             AssetCatalog.EnsureBuilt();
@@ -26,6 +26,7 @@ namespace BoneCheats.UI
             Lists.Add(guns); Lists.Add(npcs);
             guns.Build(p);
             npcs.Build(p);
+            return p;
         }
 
         private static readonly List<SpawnList> Lists = new List<SpawnList>();

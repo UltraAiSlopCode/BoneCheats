@@ -15,6 +15,28 @@ namespace BoneCheats.Core
             if (Warned.Add(key)) MelonLogger.Warning(msg);
         }
 
+        /// <summary>Reads a property or field by name, public or not. Pass a Type for a static member, an
+        /// instance for an instance member. Returns null on any failure (missing member, wrong binding,
+        /// whatever) instead of throwing - callers treat null as "couldn't find it".</summary>
+        public static object GetRaw(object o, string name)
+        {
+            if (o == null) return null;
+            try
+            {
+                const BindingFlags bf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+                Type t = o as Type;
+                object target = t != null ? null : o;
+                if (t == null) t = o.GetType();
+
+                PropertyInfo p = t.GetProperty(name, bf);
+                if (p != null) return p.GetValue(target);
+                FieldInfo f = t.GetField(name, bf);
+                if (f != null) return f.GetValue(target);
+            }
+            catch { }
+            return null;
+        }
+
         public static bool SetRaw(object o, string name, object value)
         {
             if (o == null) return false;

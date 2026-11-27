@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using BoneCheats.Core;
 using Il2CppSLZ.Marrow.Combat;        // Attack
 using Il2CppSLZ.Marrow.Data;          // AttackType
+using LabFusion.Player;               // LocalPlayer
 using LabFusion.Senders;              // PlayerSender
 using MelonLoader;
 using UnityEngine;
@@ -22,7 +23,7 @@ namespace BoneCheats.Features
         private const float PokeDamage = 0.5f;     // annoy = tiny hits, not lethal on their own
         private const float PokeInterval = 0.25f;  // 4 pokes / second
         private const float AnnoyMaxSeconds = 15f; // auto-stops so it can't kill someone by accident
-        private const float KillLoopInterval = 3f; // seconds between kills in Kill (loop)
+        private const float KillLoopInterval = 1f; // seconds between kills in Kill (loop)
 
         private sealed class AnnoyState { public float Next; public float Until; }
         private static readonly Dictionary<byte, AnnoyState> Annoying = new Dictionary<byte, AnnoyState>();
@@ -133,6 +134,39 @@ namespace BoneCheats.Features
             foreach (byte id in LoopDone) KillLoops.Remove(id);
         }
 
+        // ---------------- Clone Name ----------------
+
+        private static string _savedUsername;      // your real name, remembered the first time you clone one
+        private static bool _nameCloned;
+
+        /// <summary>
+        /// Sets your own displayed name to this player's name. Goes through LabFusion.Player.LocalPlayer.Username,
+        /// which is the game's own "change my username" path (it has its own OnUsernameChanged event, so Fusion
+        /// is already set up to re-sync it to everyone, the same as if you'd typed a new name yourself).
+        /// Your real name is remembered the first time so Restore Name can put it back.
+        /// </summary>
+        public static void CloneName(byte id)
+        {
+            Plr p = Find(id);
+            if (p == null) return;                                  // they left: nothing to do, silently
+            string name = p.Name;
+            if (string.IsNullOrEmpty(name)) return;
+
+            if (!_nameCloned) { _savedUsername = LocalPlayer.Username; _nameCloned = true; }
+
+            LocalPlayer.Username = name;
+            MelonLogger.Msg("[Players] cloned " + name + "'s name.");
+        }
+
+        /// <summary>Puts your own name back the way it was before the first Clone Name.</summary>
+        public static void RestoreName()
+        {
+            if (!_nameCloned) return;
+            LocalPlayer.Username = _savedUsername;
+            _nameCloned = false;
+            MelonLogger.Msg("[Players] name restored.");
+        }
+
         // ---------------- Clone Avatar ----------------
 
         /// <summary>
@@ -141,6 +175,9 @@ namespace BoneCheats.Features
         /// game's own RigManager.SwapAvatarCrate, so Fusion syncs it to everyone like a normal avatar change.
         /// If the avatar isn't installed on your PC the game can't load it and you keep your current one.
         /// </summary>
+        private static string _savedAvatar;      // your real avatar's barcode, remembered the first time you clone one
+        private static bool _avatarCloned;
+
         public static void CloneAvatar(byte id)
         {
             Plr p = Find(id);
@@ -164,8 +201,22 @@ namespace BoneCheats.Features
             if (me == null) return;
             if (me.avatarID == barcode) return;
 
+            if (!_avatarCloned) { _savedAvatar = me.avatarID; _avatarCloned = true; }
+
             me.SwapAvatarCrate(new Barcode(barcode), false, null);
             MelonLogger.Msg("[Players] cloning " + p.Name + "'s avatar: " + barcode);
+        }
+
+        /// <summary>Puts your own avatar back the way it was before the first Clone Avatar.</summary>
+        public static void RestoreAvatar()
+        {
+            if (!_avatarCloned || string.IsNullOrEmpty(_savedAvatar)) return;
+            RigManager me = Game.Rig;
+            if (me == null) return;
+
+            me.SwapAvatarCrate(new Barcode(_savedAvatar), false, null);
+            _avatarCloned = false;
+            MelonLogger.Msg("[Players] avatar restored.");
         }
 
         // ---------------- Teleport To ----------------
@@ -292,6 +343,7 @@ namespace BoneCheats.Features
             PlayerActions.TickAnnoy();
             PlayerActions.TickKillLoop();
             PropSpam.Tick();
+            UI.MenuBuilder.SyncPropSpamToggle();
             UI.PlayersPage.SyncIfChanged();
         }
 

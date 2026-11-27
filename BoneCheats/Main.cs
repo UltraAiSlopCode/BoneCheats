@@ -17,7 +17,7 @@ namespace BoneCheats
             GunHooks.TryInstall(HarmonyInstance);
             NoRecoil.TryInstall(HarmonyInstance);
             InstallFusionHooks();
-            AntiRagdollFeature.TryInstall(HarmonyInstance);
+            PlayerFeature.TryInstallHooks(HarmonyInstance);
             InstallAntiGrab();
             LoggerInstance.Msg("Loaded - look for 'Cheats' in BoneMenu.");
         }
@@ -27,7 +27,7 @@ namespace BoneCheats
             Players.Clear();
             CombatFeature.OnSceneInit();
             InstallFusionHooks();                   // no-op once hooked
-            AntiRagdollFeature.TryInstall(HarmonyInstance);
+            PlayerFeature.TryInstallHooks(HarmonyInstance);
             InstallAntiGrab();
             GunHooks.TryInstall(HarmonyInstance);   // no-op once installed; retries if the game wasn't ready yet
             NoRecoil.TryInstall(HarmonyInstance);

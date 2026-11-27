@@ -9,8 +9,8 @@ using RigManager = Il2CppSLZ.Marrow.RigManager;
 namespace BoneCheats.Features
 {
     /// <summary>
-    /// Skeleton ESP: a plain stick figure per player (head-neck-chest-hips, both arms, both legs; no fingers,
-    /// toes or head circle). Cheap on purpose:
+    /// Skeleton ESP: a plain stick figure per player (head-neck-chest-hips, both arms, both legs, plus a short line
+    /// hanging between the legs; no fingers, toes or head circle). Cheap on purpose:
     ///  - ONE LineRenderer per player. The skeleton is a tree, so a single line walks it and backtracks over the
     ///    shared joints (29 points); no extra objects, no per-bone GameObjects.
     ///  - Bone transforms are looked up once per player (and again only if the avatar was swapped), not every frame.
@@ -29,6 +29,9 @@ namespace BoneCheats.Features
             UlR = 15, LlR = 16, FootR = 17,
             BoneCount = 18;
 
+        // Virtual points (not bones): computed per frame from the pelvis. Crotch = midpoint of the hip joints, Dong = the tip of the extra line.
+        private const int Crotch = 18, Dong = 19;
+
         // One continuous line over the whole tree (backtracks over shared joints).
         private static readonly int[] Path =
         {
@@ -36,6 +39,7 @@ namespace BoneCheats.Features
             ShL, UaL, LaL, HandL, LaL, UaL, ShL, Neck,
             ShR, UaR, LaR, HandR, LaR, UaR, ShR, Neck,
             Chest, Hips,
+            Crotch, Dong, Crotch, Hips,
             UlL, LlL, FootL, LlL, UlL, Hips,
             UlR, LlR, FootR,
         };
@@ -104,7 +108,20 @@ namespace BoneCheats.Features
                         if (!v.HasBones) continue;
                     }
 
-                    for (int i = 0; i < Path.Length; i++) v.Pos[i] = v.Bones[Path[i]].position;
+                    // the extra line between the legs: starts at the midpoint of the hip joints, hangs down and a bit forward
+                    Vector3 hips = v.Bones[Hips].position;
+                    Vector3 crotch = (v.Bones[UlL].position + v.Bones[UlR].position) * 0.5f;
+                    Vector3 down = (hips - v.Bones[Chest].position).normalized;
+                    Vector3 side = v.Bones[UlR].position - v.Bones[UlL].position;
+                    Vector3 fwd = Vector3.Cross(side, -down).normalized;
+                    float scale = Mathf.Max(0.3f, (v.Bones[Neck].position - hips).magnitude / 0.5f);   // follows avatar size
+                    Vector3 dong = crotch + down * (0.10f * scale) + fwd * (0.08f * scale);
+
+                    for (int i = 0; i < Path.Length; i++)
+                    {
+                        int b = Path[i];
+                        v.Pos[i] = b == Crotch ? crotch : b == Dong ? dong : v.Bones[b].position;
+                    }
                     v.Line.SetPositions(v.Pos);
 
                     Color c = p.Id == CombatFeature.TargetId ? target : normal;
