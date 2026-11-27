@@ -43,7 +43,7 @@ You can:
 ## Building From Source
 
 **Requirements:**
-- Visual Studio 2022
+- Visual Studio community
 - .NET 6 SDK
 - BONELAB
 - MelonLoader
