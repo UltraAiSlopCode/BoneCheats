@@ -1,6 +1,6 @@
 # 🦴 BoneCheats AI Slop
 
-**BoneCheats 1.0 — BONELAB Mod**
+**BoneCheats 1.1 — BONELAB Mod**
 
 A feature-packed BONELAB mod built with MelonLoader, BoneLib and LabFusion.
 
