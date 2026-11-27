@@ -88,17 +88,6 @@ Automatic updates: An in-game update checker and automatic DLL updating system (
 
 ✨ Features
 
-BoneCheats includes multiple categories of cheats and customization options.
-
-Category| Features
-👁️ Visuals| ESP, Player Names, Bullet Tracers
-💎 Charms| Player Charms, Weapon Charms, Custom Colors
-🔫 Combat| Aim Modes, No Recoil, No Spread, Rapid Fire, Infinite Ammo, Damage Multiplier
-🏃 Movement| Fly, Noclip, Walk Speed
-🛡️ Player| God Mode, Anti Ragdoll
-🌐 Lobby| Player Management, Teleport, Lobby Actions, Prop Spawning
-⚙️ Settings| Save Config, Load Config, Reset Settings
-
 👁️ Visual Enhancements
 
 Improve your awareness with additional visual options.
