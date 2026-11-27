@@ -1,6 +1,6 @@
  🦴 BoneCheats
 
-The ultimate BONELAB cheats and enhancements mod.
+The ultimate AI coded BONELAB cheats and enhancements mod.
 
 <p align="center">
   <strong>BoneCheats 1.3.0</strong><br>
